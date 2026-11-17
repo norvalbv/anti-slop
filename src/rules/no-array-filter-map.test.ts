@@ -31,6 +31,7 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     "const Array = custom; Array.from(users).filter(active).map(email);",
     "function collect(Object) { return Object.keys(users).filter(active).map(email); }",
     "class Array {} Array.from(users).filter(active).map(email);",
+    "type Array<T> = Set<T>; declare const users: Array<User>; users.filter(active).map(email);",
     "function collect(value, separator) { return value.split(separator).filter(Boolean).map(email); }",
     "function collect(value) { return value.split(1).filter(Boolean).map(email); }",
     "class Path extends Base { parts() { return super.split('/').filter(Boolean).map(email); } }",
@@ -43,6 +44,7 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
   invalid: [
     { code: propertyChain(8), errors: [error] },
     { code: aliasChain(8), errors: [error] },
+    { code: "declare global { interface Array<T> { first(): T } } declare const users: Array<User>; users.filter(active).map(email); export {};", errors: [error] },
     { code: "function candidates(data: { widths: readonly number[] }) { return data.widths.filter(x => x > 0).map(String); }", errors: [error] },
     { code: "const data = { widths: [1, 2] }; data.widths.map(String).filter(Boolean);", errors: [error] },
     { code: "const data = { widths: [1, 2] }; const alias = data; const widths = alias.widths; widths['filter'](positive)['map'](String);", errors: [error] },
