@@ -54,6 +54,25 @@ function isStableConstVariable(variable: Variable, declarator: ESTree.VariableDe
 	);
 }
 
+/** Whether a binding's initializer asserts a broad type, as `{} as Record<string, T>` does. */
+function hasBroadAssertionInitializer(
+	initializer: ESTree.Expression,
+	environment: TypeEnvironment,
+): boolean {
+	let current = initializer;
+	while (
+		current.type === "ParenthesizedExpression" ||
+		current.type === "TSNonNullExpression" ||
+		current.type === "TSSatisfiesExpression"
+	) {
+		current = current.expression;
+	}
+	return (
+		(current.type === "TSAsExpression" || current.type === "TSTypeAssertion") &&
+		classifyWideningTarget(current.typeAnnotation, environment) !== null
+	);
+}
+
 function hasKnownEvidence(
 	sourceCode: SourceCode,
 	expression: ESTree.Expression,
@@ -73,8 +92,11 @@ function hasKnownEvidence(
 	) {
 		return false;
 	}
-	// A broad annotation on the source is reported (or exempted) at its own declaration.
-	if (annotationTarget(variableTypeAnnotation(sourceCode, variable), environment) !== null) {
+	// A broad annotation or assertion on the source is reported (or exempted) at its own declaration.
+	if (
+		annotationTarget(variableTypeAnnotation(sourceCode, variable), environment) !== null ||
+		hasBroadAssertionInitializer(declarator.init, environment)
+	) {
 		return false;
 	}
 	visitedVariables.add(variable);
