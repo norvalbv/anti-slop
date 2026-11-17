@@ -7,7 +7,10 @@ type TypeScope = ESTree.Node;
 
 type TypeBinding = {
 	readonly alias: ESTree.TSTypeAliasDeclaration | null;
-	/** False for a value or namespace import, whose type meaning syntax cannot show. */
+	/**
+	 * False for a value or namespace import, whose type meaning syntax cannot show, and for a
+	 * `declare global` interface, which merges with the global type instead of shadowing it.
+	 */
 	readonly declaresType: boolean;
 	readonly name: string;
 	readonly scope: TypeScope;
@@ -78,14 +81,25 @@ function isTypeOnlyImport(
 	);
 }
 
+function mergesWithGlobal(node: ESTree.TSInterfaceDeclaration): boolean {
+	const statement = node.parent.type === "ExportNamedDeclaration" ? node.parent : node;
+	return (
+		statement.parent.type === "TSModuleBlock" &&
+		statement.parent.parent.type === "TSModuleDeclaration" &&
+		statement.parent.parent.kind === "global"
+	);
+}
+
 function declaredTypeBinding(
 	node: ESTree.Node,
 ): Omit<TypeBinding, "scope"> | null {
 	if (node.type === "TSTypeAliasDeclaration") {
 		return { alias: node, declaresType: true, name: node.id.name };
 	}
+	if (node.type === "TSInterfaceDeclaration") {
+		return { alias: null, declaresType: !mergesWithGlobal(node), name: node.id.name };
+	}
 	if (
-		node.type === "TSInterfaceDeclaration" ||
 		node.type === "TSEnumDeclaration" ||
 		node.type === "ClassDeclaration" ||
 		node.type === "ClassExpression"

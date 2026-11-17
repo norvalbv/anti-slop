@@ -65,6 +65,9 @@ export default function (key: string): unknown { return registry.get(key); }`,
     "class A { [keys.read](a: 'x'): number; [keys.read](a: string): unknown { return a; } }",
     "type C<T> = T extends () => unknown ? 1 : 2;",
     "type C<T> = T extends { load(): Promise<unknown> } ? 1 : 2;",
+    "declare module 'lib' { interface Promise<T> { value: string } function load(): Promise<unknown>; }",
+    // Without import or export syntax the file may still be a module (moduleDetection), so this shadows.
+    "interface Promise<T> { value: string } declare function load(): Promise<unknown>;",
   ],
   invalid: [
     { code: "function load(): unknown { return input; }", errors: [error] },
@@ -155,6 +158,16 @@ export default function (key: string): unknown { return registry.get(key); }`,
     { code: "class A { [keys[i]](a: 'x'): number; [keys[i]](a: string): unknown { return a; } }", errors: [error] },
     { code: "type C<T> = T extends string ? () => unknown : never;", errors: [error] },
     { code: "type C<T> = T extends string ? never : () => unknown;", errors: [error] },
+    { code: "import Promise from 'bluebird'; export function load(): Promise<unknown> { return v; }", errors: [error] },
+    { code: "import { Promise } from 'bluebird'; export function load(): Promise<unknown> { return v; }", errors: [error] },
+    {
+      code: "declare global { interface Promise<T> { extra(): void } function load(): Promise<unknown>; } export {}",
+      errors: [error],
+    },
+    {
+      code: "declare global { export interface PromiseLike<T> { extra(): void } function load(): PromiseLike<unknown>; } export {}",
+      errors: [error],
+    },
   ],
 });
 

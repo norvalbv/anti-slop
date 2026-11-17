@@ -4,7 +4,7 @@ import type { ESTree } from "@oxlint/plugins";
 
 import {
   createTypeAliasEnvironment,
-  hasVisibleTypeBinding,
+  hasVisibleTypeDeclaration,
   resolvedTypeMatches,
   type TypeAliasEnvironment,
 } from "../shared/type-alias-resolution.ts";
@@ -163,7 +163,7 @@ export const noUnknownReturnsRule = defineRule({
           resolved.typeName.type !== "Identifier" ||
           (resolved.typeName.name !== "Promise" &&
             resolved.typeName.name !== "PromiseLike") ||
-          hasVisibleTypeBinding(resolved.typeName.name, resolved, typeAliases)
+          hasVisibleTypeDeclaration(resolved.typeName.name, resolved, typeAliases)
         ) {
           return false;
         }
