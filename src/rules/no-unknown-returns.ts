@@ -79,7 +79,6 @@ const staticMethodKey = (method: ESTree.MethodDefinition): string | null => {
     return `#${method.key.name}`;
   }
   if (
-    method.computed &&
     method.key.type === "Literal" &&
     (typeof method.key.value === "string" || typeof method.key.value === "number")
   ) {
