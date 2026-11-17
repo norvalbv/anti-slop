@@ -866,6 +866,10 @@ return {
       // Save this node as the current previous statement.
       const prevNode = scopeInfo!.prevNode
 
+      // An attached same-line `;` (`function f() {};`) belongs to the statement before it.
+      if (prevNode && node.type === 'EmptyStatement' && prevNode.loc.end.line === node.loc.start.line)
+        return
+
       // Verify.
       if (prevNode)
         pendingPairs.push({ prevNode, nextNode: node })

@@ -35,6 +35,8 @@ tester.run("anti-slop/require-readable-spacing", requireReadableSpacingRule, {
   ],
   invalid: [
     { code: "function f() {};\nfunction g() {}", output: "function f() {};\n\nfunction g() {}", errors: [error] },
+    { code: "function g() {\n  if (x) {\n    y();\n  };\n  foo();\n}", output: "function g() {\n  if (x) {\n    y();\n  };\n\n  foo();\n}", errors: [error] },
+    { code: "function g() {\n  function h() {};\n  foo();\n}", output: "function g() {\n  function h() {};\n\n  foo();\n}", errors: [error] },
     { code: "export declare function parse(value: string): string;\nexport function render() {}", output: "export declare function parse(value: string): string;\n\nexport function render() {}", errors: [error] },
     { code: "namespace Types {\nexport type A = string;\nexport type B = number;\n}", output: "namespace Types {\nexport type A = string;\n\nexport type B = number;\n}", errors: [error] },
     { code: "declare function parse(value: string): string;\nfunction render() {}", output: "declare function parse(value: string): string;\n\nfunction render() {}", errors: [error] },

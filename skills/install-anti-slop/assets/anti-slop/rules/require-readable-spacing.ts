@@ -10,9 +10,7 @@ function declaration(node: ESTree.Node): ESTree.Node {
   return node;
 }
 
-function skipAttachedStatementPair(previous: ESTree.Node, next: ESTree.Node): boolean {
-  if (next.type === "EmptyStatement" && previous.loc.end.line === next.loc.start.line) return true;
-
+function isOverloadPair(previous: ESTree.Node, next: ESTree.Node): boolean {
   const prevDeclaration = declaration(previous);
   const nextDeclaration = declaration(next);
   return prevDeclaration.type === "TSDeclareFunction"
@@ -72,7 +70,7 @@ const paddingRule = createPaddingLineRule(
     "singleline-binding": singlelineBinding,
     "undocumented-singleline-binding": undocumentedSinglelineBinding,
   },
-  skipAttachedStatementPair,
+  isOverloadPair,
 );
 
 /** Restore structural blank lines with whitespace-only fixes; keep single-line binding groups and overloads grouped. */
