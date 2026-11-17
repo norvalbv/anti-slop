@@ -74,6 +74,10 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"const a: Record<string, unknown> = {}; function f(): Record<string, unknown> { return a; }",
 		"const a: Record<string, number> = {}; const b: object = a;",
 		"type Bag = Record<string, unknown>; const a: Bag = {}; const b: Bag = a;",
+		"type Item = { id: number }; let check: (value: Item) => boolean = (value: unknown): value is Item => true; check = (value: Item) => value.id > 0; check({ id: 1 });",
+		"type Item = { id: number }; let check = (value: unknown): value is Item => true; check = (value: unknown): value is Item => false; check({ id: 1 });",
+		"type Item = { id: number }; let check = (value: unknown): value is Item => true; function swap() { check = (value: unknown): value is Item => false; } check({ id: 1 });",
+		"function isString(value: unknown): value is string { return typeof value === 'string'; } let read = (): string => 'x'; read = (() => 1) as never; isString(read());",
 	],
 	invalid: [
 		{ code: `${prelude} const holder = class Record {}; const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
@@ -240,5 +244,8 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		{ code: "const a: unknown = 1; const b: unknown = a;", errors: [error] },
 		{ code: "const a = {}; const b: Record<string, number> = a;", errors: [error] },
 		{ code: `${prelude} interface Commands { readonly start: Command } const source: Commands = { start: startCommand }; const commands: Record<string, Command> = source;`, errors: [error] },
+		{ code: "type Item = { id: number }; let check = (value: unknown): value is Item => true; check({ id: 1 });", errors: [error] },
+		{ code: "type Item = { id: number }; const check = (value: unknown): value is Item => true; check({ id: 1 });", errors: [error] },
+		{ code: "function isString(value: unknown): value is string { return typeof value === 'string'; } const read = (): string => 'x'; isString(read());", errors: [error] },
 	],
 });

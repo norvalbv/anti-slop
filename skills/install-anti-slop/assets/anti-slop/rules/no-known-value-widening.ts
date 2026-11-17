@@ -42,11 +42,15 @@ function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | nul
 		: null;
 }
 
+function hasOnlyInitializingWrites(variable: Variable): boolean {
+	return variable.references.every((reference) => reference.init || !reference.isWrite());
+}
+
 function isStableConstVariable(variable: Variable, declarator: ESTree.VariableDeclarator): boolean {
 	return (
 		declarator.parent.type === "VariableDeclaration" &&
 		declarator.parent.kind === "const" &&
-		variable.references.every((reference) => reference.init || !reference.isWrite())
+		hasOnlyInitializingWrites(variable)
 	);
 }
 
@@ -95,7 +99,9 @@ function localFunctionForCall(
 	if (isFunctionExpression(unwrapped)) return unwrapped;
 	if (unwrapped.type !== "Identifier") return null;
 	const variable = resolveVariable(sourceCode, unwrapped);
-	if (variable === null || variable.defs.length !== 1) return null;
+	if (variable === null || variable.defs.length !== 1 || !hasOnlyInitializingWrites(variable)) {
+		return null;
+	}
 	const [definition] = variable.defs;
 	if (definition === undefined) return null;
 	if (definition.type === "FunctionName" && isFunctionExpression(definition.node)) {
