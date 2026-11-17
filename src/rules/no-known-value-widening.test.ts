@@ -45,6 +45,9 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		'type Identity<T> = T; type Wrapped<T> = Identity<Readonly<T>>; const value: Wrapped<string> = "x";',
 		'type Pair<T, U extends PropertyKey> = Record<U, T>; type Outer<T extends PropertyKey, U extends PropertyKey> = Pair<U, T>; const closedKey: Outer<"a", string> = { a: "x" };',
 		`${prelude} type Keys = "start"; type K = Keys; type Dict<V> = Record<K, V>; type Outer<K> = Dict<Command>; const commands: Outer<string> = { start: startCommand };`,
+		`${prelude} type Second<T, U> = U; type Outer<T, U> = Record<Second<U, T>, Command>; const commands: Outer<"start", string> = { start: startCommand };`,
+		`${prelude} type Key<T> = T; function build<T extends string>(extra: Record<T, Command>) { const all: Record<Key<T | "start">, Command> = { ...extra, start: startCommand }; return all; }`,
+		'type Field<K extends string> = K; type Form<K extends string> = Record<Field<K | "id">, string>; const form: Form<"name"> = { id: "1", name: "x" };',
 	],
 	invalid: [
 		{ code: `${prelude} const holder = class Record {}; const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
@@ -156,6 +159,18 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		},
 		{
 			code: `${prelude} type K = string; type Dict<V> = Record<K, V>; type Outer<K> = Dict<K>; const commands: Outer<Command> = { start: startCommand };`,
+			errors: [error],
+		},
+		{
+			code: `${prelude} type Second<T, U> = U; type Outer<T, U> = Record<Second<U, T>, Command>; const commands: Outer<string, "start"> = { start: startCommand };`,
+			errors: [error],
+		},
+		{
+			code: `${prelude} type Key<T> = T; type Outer<T> = Record<Key<"a" | T>, Command>; const commands: Outer<string> = { start: startCommand };`,
+			errors: [error],
+		},
+		{
+			code: `${prelude} type Key<T> = T; type Outer<Key> = Record<Key, Command>; const commands: Outer<Key<string>> = { start: startCommand };`,
 			errors: [error],
 		},
 		{
