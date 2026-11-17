@@ -17,6 +17,16 @@ tester.run(
       "const result = { value };",
       "const result = { ...values };",
       "const result = condition ? { value } : {};",
+      "const r = { ...(c ? { v } : ({ w } as Partial<T>)) };",
+      "const r = { ...(c ? { v } : ({ w } satisfies Partial<T>)) };",
+      "const r = { ...(c ? { v } : <Partial<T>>{ w }) };",
+      "const r = { ...(x as Partial<T>) };",
+      "const r = { ...(x as {}) };",
+      "const r = { ...({} as Partial<T>) };",
+      "const r = c ? { v } : ({} as Partial<T>);",
+      "const r = [...(c ? [v] : ([] as T[]))];",
+      "const r = [...(c ? [v] : ({} as T[]))];",
+      "const r = { ...(c ? { v } : (({} as Partial<T>).x as Partial<T>)) };",
     ],
     invalid: [
       {
@@ -25,6 +35,42 @@ tester.run(
       },
       {
         code: "const result = { ...(condition ? {} : { value }) };",
+        errors: [error],
+      },
+      {
+        code: "const r = { ...(c ? { v } : ({} as Partial<T>)) };",
+        errors: [error],
+      },
+      {
+        code: "const r = { ...(c ? { v } : {} satisfies Partial<T>) };",
+        errors: [error],
+      },
+      {
+        code: "const r = { ...((c ? { v } : {}) as Partial<T>) };",
+        errors: [error],
+      },
+      {
+        code: "const r = { ...(c ? { v } : {})! };",
+        errors: [error],
+      },
+      {
+        code: "const r = { ...(c ? ({} as Partial<T>) : { v }) };",
+        errors: [error],
+      },
+      {
+        code: "const r = { ...(c ? { v } : <Partial<T>>{}) };",
+        errors: [error],
+      },
+      {
+        code: "const r = { ...((c ? { v } : {}) satisfies Partial<T>) };",
+        errors: [error],
+      },
+      {
+        code: "const r = { ...(c ? { v } : ({})) };",
+        errors: [error],
+      },
+      {
+        code: "const r = { ...(c ? ({}) : { v }) };",
         errors: [error],
       },
     ],
