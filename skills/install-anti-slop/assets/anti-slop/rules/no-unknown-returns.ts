@@ -73,9 +73,23 @@ const hasPreviousFunctionOverload = (node: ESTree.Function): boolean => {
   );
 };
 
+/** Side-effect-free key path such as `key` or `Symbol.iterator`, which every overload evaluates alike. */
+const keyPath = (node: ESTree.Node): string | null => {
+  if (node.type === "Identifier") return node.name;
+  if (node.type !== "MemberExpression" || node.computed || node.property.type !== "Identifier") {
+    return null;
+  }
+  const object = keyPath(node.object);
+  return object === null ? null : `${object}.${node.property.name}`;
+};
+
 const staticMethodKey = (method: ESTree.MethodDefinition): string | null => {
   if (!method.computed && method.key.type === "Identifier") {
     return method.key.name;
+  }
+  if (method.computed) {
+    const path = keyPath(method.key);
+    if (path !== null) return `[${path}]`;
   }
   if (!method.computed && method.key.type === "PrivateIdentifier") {
     return `#${method.key.name}`;
