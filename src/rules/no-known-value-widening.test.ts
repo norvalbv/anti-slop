@@ -70,6 +70,10 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"function isA(value: unknown): value is 'a' { return true; } function f(input: string) { return isA(input); }",
 		"function isType<T>(value: unknown): value is T { return true; } function f<T>(input: T) { return isType(input); }",
 		"function assertDefined(value: unknown): asserts value { if (value == null) throw new Error(); } function f(input: string) { assertDefined(input); }",
+		"const a: Record<string, unknown> = {}; const b: Record<string, unknown> = a;",
+		"const a: Record<string, unknown> = {}; function f(): Record<string, unknown> { return a; }",
+		"const a: Record<string, number> = {}; const b: object = a;",
+		"type Bag = Record<string, unknown>; const a: Bag = {}; const b: Bag = a;",
 	],
 	invalid: [
 		{ code: `${prelude} const holder = class Record {}; const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
@@ -229,5 +233,12 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		{ code: "type User = { readonly id: string }; function isUser(value: unknown): value is (User) { return true; } function f(user: User) { return isUser(user); }", errors: [error] },
 		{ code: "function isTrue(value: unknown): value is boolean { return true; } function f(flag: true) { return isTrue(flag); }", errors: [error] },
 		{ code: "function assertDefined(value: unknown): asserts value { if (value == null) throw new Error(); } assertDefined('known');", errors: [error] },
+		{ code: "const a = { x: 1 }; const b: Record<string, number> = a;", errors: [error] },
+		{ code: "const a: Record<'x', number> = { x: 1 }; const b: Record<string, number> = a;", errors: [error] },
+		{ code: "const a: string = 'x'; const b: unknown = a;", errors: [error] },
+		{ code: "const a: object = {}; const b: object = a;", errors: [error] },
+		{ code: "const a: unknown = 1; const b: unknown = a;", errors: [error] },
+		{ code: "const a = {}; const b: Record<string, number> = a;", errors: [error] },
+		{ code: `${prelude} interface Commands { readonly start: Command } const source: Commands = { start: startCommand }; const commands: Record<string, Command> = source;`, errors: [error] },
 	],
 });

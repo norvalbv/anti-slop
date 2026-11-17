@@ -53,6 +53,7 @@ function isStableConstVariable(variable: Variable, declarator: ESTree.VariableDe
 function hasKnownEvidence(
 	sourceCode: SourceCode,
 	expression: ESTree.Expression,
+	environment: TypeEnvironment,
 	visitedVariables = new Set<Variable>(),
 ): boolean {
 	if (isKnownEvidenceExpression(expression)) return true;
@@ -68,8 +69,12 @@ function hasKnownEvidence(
 	) {
 		return false;
 	}
+	// A broad annotation on the source is reported (or exempted) at its own declaration.
+	if (annotationTarget(variableTypeAnnotation(sourceCode, variable), environment) !== null) {
+		return false;
+	}
 	visitedVariables.add(variable);
-	return hasKnownEvidence(sourceCode, declarator.init, visitedVariables);
+	return hasKnownEvidence(sourceCode, declarator.init, environment, visitedVariables);
 }
 
 function isFunctionExpression(node: ESTree.Node): node is FunctionExpression {
@@ -403,14 +408,14 @@ export const noKnownValueWideningRule = defineRule({
 			destination: WideningTarget | null,
 			subject: string,
 		) => {
-			if (destination === null) return;
+			if (destination === null || environment === null) return;
 			if (
 				isDictionaryAccumulatorTarget(destination) &&
 				isEmptyObjectExpression(expression)
 			) {
 				return;
 			}
-			if (!hasKnownEvidence(context.sourceCode, expression)) return;
+			if (!hasKnownEvidence(context.sourceCode, expression, environment)) return;
 			context.report({
 				node: expression,
 				messageId: "widening",
