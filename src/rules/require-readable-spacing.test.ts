@@ -8,6 +8,18 @@ const error = { messageId: "expectedBlankLine" };
 
 tester.run("anti-slop/require-readable-spacing", requireReadableSpacingRule, {
   valid: [
+    "function f() {};",
+    "function f() {};\n\nfunction g() {}",
+    "namespace Types {\nexport interface A {}\n\nexport interface B {}\n}",
+    "declare module 'x' {\n  export interface A { a: string }\n  export type B = string;\n}",
+    "declare namespace Types {\n  namespace Inner {\n    export interface A {}\n    export interface B {}\n  }\n}",
+    "declare global {\n  export interface A {}\n  export interface B {}\n}",
+    { code: "export namespace Types {\n  export interface A {}\n  export interface B {}\n}", filename: "types.d.ts" },
+    "function f() {\nfirst: foo();\nsecond: bar();\n}",
+    "export declare function parse(value: string): string;\nexport function parse(value: string) { return value; }",
+    "declare function parse(value: string): string;\ndeclare function render(): void;",
+    "export declare function parse(value: string): string;\nexport declare function render(): void;",
+    "export default function (value: string): string;\nexport default function (value: string) { return value; }",
     "import { a } from 'a';\nimport { b } from 'b';\n\nexport const c = a + b;",
     "function f() {\nconst a = 1;\nconst b = 2;\n\nreturn a + b;\n}",
     "function f() { return 1; }",
@@ -29,6 +41,17 @@ tester.run("anti-slop/require-readable-spacing", requireReadableSpacingRule, {
     "import { a } from 'a';\n\nconst b = a;\nexport const c = b;",
   ],
   invalid: [
+    { code: "function f() {};\nfunction g() {}", output: "function f() {};\n\nfunction g() {}", errors: [error] },
+    { code: "function g() {\n  if (x) {\n    y();\n  };\n  foo();\n}", output: "function g() {\n  if (x) {\n    y();\n  };\n\n  foo();\n}", errors: [error] },
+    { code: "function g() {\n  function h() {};\n  foo();\n}", output: "function g() {\n  function h() {};\n\n  foo();\n}", errors: [error] },
+    { code: "export declare function parse(value: string): string;\nexport function render() {}", output: "export declare function parse(value: string): string;\n\nexport function render() {}", errors: [error] },
+    { code: "namespace Types {\nexport type A = string;\nexport type B = number;\n}", output: "namespace Types {\nexport type A = string;\n\nexport type B = number;\n}", errors: [error] },
+    { code: "declare function parse(value: string): string;\nfunction render() {}", output: "declare function parse(value: string): string;\n\nfunction render() {}", errors: [error] },
+    { code: "function parse(value: string): string;\nfunction parse(value: string) { return value; }\nfunction render(): void;\nfunction render() {}", output: "function parse(value: string): string;\nfunction parse(value: string) { return value; }\n\nfunction render(): void;\nfunction render() {}", errors: [error] },
+    { code: "export default function (value: string): string;\nexport function render() {}", output: "export default function (value: string): string;\n\nexport function render() {}", errors: [error] },
+    { code: "namespace Types {\nexport interface A {}\nexport interface B {}\n}", output: "namespace Types {\nexport interface A {}\n\nexport interface B {}\n}", errors: [error] },
+    { code: "export namespace Types {\nexport interface A {}\nexport interface B {}\n}", output: "export namespace Types {\nexport interface A {}\n\nexport interface B {}\n}", errors: [error] },
+    { code: "first: foo();\nsecond: bar();", output: "first: foo();\n\nsecond: bar();", errors: [error] },
     {
       code: "const a = 1;\n/** B docs. */\nconst b = 2;",
       output: "const a = 1;\n\n/** B docs. */\nconst b = 2;",

@@ -4,9 +4,15 @@ import { noArrayFilterMapRule } from "./no-array-filter-map.ts";
 
 const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const error = { messageId: "arrayFilterMap" };
+const propertyChain = (length: number) =>
+  ["const a0 = { w: [] };", ...Array.from({ length }, (_, i) => `const a${i + 1} = { w: a${i}.w };`), `a${length}.w.filter(x).map(y);`].join("\n");
+const aliasChain = (length: number) =>
+  ["const a0 = [];", ...Array.from({ length }, (_, i) => `const a${i + 1} = a${i};`), `a${length}.filter(x).map(y);`].join("\n");
 
 tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
   valid: [
+    propertyChain(2000),
+    aliasChain(5000),
     "const users = []; users.values().filter(active).map(email).toArray();",
     "const users = []; users.values().map(email).filter(Boolean).toArray();",
     "Iterator.from(users).filter(active).map(email).toArray();",
@@ -22,8 +28,37 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     "let users = []; users = iterator; users.filter(active).map(email);",
     "const users = []; users[method](active).map(email);",
     "const first = second; const second = first; first.filter(active).map(email);",
+    "const Array = custom; Array.from(users).filter(active).map(email);",
+    "function collect(Object) { return Object.keys(users).filter(active).map(email); }",
+    "class Array {} Array.from(users).filter(active).map(email);",
+    "type Array<T> = Set<T>; declare const users: Array<User>; users.filter(active).map(email);",
+    "function collect(value, separator) { return value.split(separator).filter(Boolean).map(email); }",
+    "function collect(value) { return value.split(1).filter(Boolean).map(email); }",
+    "class Path extends Base { parts() { return super.split('/').filter(Boolean).map(email); } }",
+    "Object.groupBy(users, team).filter(active).map(email);",
+    "constructor.from(users).filter(active).map(email);",
+    "toString.keys(users).filter(active).map(email);",
+    "const data = { widths: [] }; data.widths.values().filter(active).map(email).toArray();",
+    "const data = { widths: [] }; data.widths.flatMap(width => active(width) ? [email(width)] : []);",
   ],
   invalid: [
+    { code: propertyChain(8), errors: [error] },
+    { code: aliasChain(8), errors: [error] },
+    { code: "declare global { interface Array<T> { first(): T } } declare const users: Array<User>; users.filter(active).map(email); export {};", errors: [error] },
+    { code: "function candidates(data: { widths: readonly number[] }) { return data.widths.filter(x => x > 0).map(String); }", errors: [error] },
+    { code: "const data = { widths: [1, 2] }; data.widths.map(String).filter(Boolean);", errors: [error] },
+    { code: "const data = { widths: [1, 2] }; const alias = data; const widths = alias.widths; widths['filter'](positive)['map'](String);", errors: [error] },
+    { code: "function collect(data: { readonly widths: ReadonlyArray<number> }) { return data['widths']['map'](String)['filter'](Boolean); }", errors: [error] },
+    { code: "function collect(data: { widths: Array<number> }) { const alias = data; return alias.widths.filter(active).map(email); }", errors: [error] },
+    { code: "function collect(data: { widths: readonly (384 | 1200)[]; sourceWidth: number }) { return data.widths.filter(width => width !== data.sourceWidth).map(String); }", errors: [error] },
+    { code: "function collect(data: { nested: { widths: readonly [1, 2] } }) { return data.nested.widths.filter(active).map(email); }", errors: [error] },
+    { code: "function collect(data: { widths?: readonly number[] }) { return data.widths?.filter(active)?.map(email); }", errors: [error] },
+    { code: "const widths = []; const data = { widths }; data.widths.filter(active).map(email);", errors: [error] },
+    { code: "const data = { nested: { 'widths': [] } }; data.nested.widths.slice().filter(active).map(email);", errors: [error] },
+    { code: "({ widths: [] }).widths.filter(active).map(email);", errors: [error] },
+    { code: "const data = { ['widths']: [] }; (data.widths!).filter(active).map(email);", errors: [error] },
+    { code: "const data: { widths: number[] } = fetchData(); data.widths.filter(active).map(email);", errors: [error] },
+    { code: "const data = { widths: [] }; { const data = { widths: [] }; data.widths.map(email).filter(active); }", errors: [error] },
     { code: "[].filter(active).map(email);", errors: [error] },
     { code: "[].map(user => user.active ? user.email : undefined).filter(email => email !== undefined);", errors: [error] },
     { code: "const users = []; users.map(email).filter(Boolean);", errors: [error] },
@@ -37,5 +72,18 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     { code: "const users = []; users?.filter(active)?.map(email);", errors: [error] },
     { code: "const users = []; users.slice().filter(active).map(email);", errors: [error] },
     { code: "const users = []; users.filter(active).map(email).filter(Boolean);", errors: [error, error] },
+    { code: "function collect(value) { return value.split(',').map(part => part.trim()).filter(Boolean); }", errors: [error] },
+    { code: "function collect(value) { return value.split(/\\s+/).filter(Boolean).map(email); }", errors: [error] },
+    { code: "Array.from(users).filter(active).map(email);", errors: [error] },
+    { code: "Array.of(first, second).map(email).filter(Boolean);", errors: [error] },
+    { code: "Object.keys(users).filter(active).map(email);", errors: [error] },
+    { code: "Object.values(users).map(email).filter(Boolean);", errors: [error] },
+    { code: "Object.entries(users).filter(active).map(email);", errors: [error] },
+    { code: "const users = []; users.flat().filter(active).map(email);", errors: [error] },
+    { code: "const users = []; users.sort().reverse().filter(active).map(email);", errors: [error] },
+    { code: "Array.from(users).filter(active).map(email);", languageOptions: { globals: { Array: "readonly" } }, errors: [error] },
+    { code: "type Object = Record<string, unknown>; Object.keys(users).filter(active).map(email);", errors: [error] },
+    { code: "interface Array<T> { first(): T } Array.from(users).filter(active).map(email);", errors: [error] },
+    { code: "Object.keys(users).map(email).filter(Boolean);", languageOptions: { globals: { Object: "readonly" } }, errors: [error] },
   ],
 });

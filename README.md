@@ -109,7 +109,7 @@ export default defineConfig({
 ### Generic rules
 
 - `no-array-filter-map` — rejects adjacent eager array filter/map passes while allowing lazy iterator pipelines.
-- `no-reduce-accumulator-copy` — rejects non-spread accumulator copies inside reducers; complements native `oxc/no-accumulating-spread`.
+- `no-reduce-accumulator-copy` — rejects non-spread accumulator copies inside reducers; complements native `oxc/no-accumulating-spread`. By default, this uses the `reduce`/`reduceRight` method name as a heuristic, including unknown and custom receivers. Configure `["error", { "requireArrayReceiver": true }]` to report only receivers with local array evidence (literals, array annotations, or recognized array chains), avoiding warnings on custom one-call APIs.
 - `no-chained-type-assertions` — rejects nested `as` and angle-bracket assertions that fabricate evidence; chains made only of `as const` remain valid.
 - `no-conditional-empty-object-spread` — reports object spreads that use a conditional `{}` branch to omit fields. It intentionally has no autofix because omission is not equivalent to assigning `undefined`.
 - `no-known-value-widening` — rejects known expressions flowing into explicit `unknown`, `object`, anonymous-object, or open-dictionary targets, including known arguments passed to local `unknown` type predicates. Empty dictionary accumulators and finite-key `Record` targets remain valid.
@@ -162,7 +162,9 @@ const emails = users.values()
 
 A single `flatMap(user => user.active ? [user.email] : [])` or a reducer that pushes into a fresh local array is also allowed. Iterator helpers avoid intermediate arrays and per-item wrapper arrays, but are not guaranteed to be faster. Check runtime support; TypeScript library declarations do not polyfill them.
 
-This AST/scope rule recognizes array literals, direct array/tuple annotations, immutable local aliases, and supported array-preserving method chains. Unknown receivers (including imported factory results and unannotated parameters), type aliases, and property-based array types are not inferred. Iterator pipelines are not flagged. Both `filter().map()` and `map().filter()` are covered, regardless of predicate. There is no autofix: callback ordering, indexes, `thisArg`, sparse arrays, and truthiness filtering must be reviewed before changing APIs.
+This AST/scope rule recognizes array literals, direct array/tuple annotations, immutable local aliases, and supported array-preserving method chains. It also resolves static property paths through inline object type annotations and object literals, including nested properties, readonly arrays, tuples, and computed string names. For example, `function collect(data: { widths: readonly number[] }) { return data.widths.filter(positive).map(String); }` is rejected. Property resolution is bounded and skips receivers with explicit assignments, updates, or deletes through simple local aliases. It does not track mutations inside calls or aliases stored in other objects.
+
+Unknown receivers, imported factory results, unannotated parameters, named type aliases, interfaces, and nullable unions are not inferred. In particular, `data.widths.filter(positive).map(String)` remains undetected when `data` has an imported metadata type that declares `widths` as an array. An inline object annotation supplies local evidence. Object literals with spreads, dynamic keys, duplicate definitions of the accessed property, or a getter for the accessed property are also excluded. Iterator pipelines are not flagged. Both `filter().map()` and `map().filter()` are covered, regardless of predicate. There is no autofix: callback ordering, indexes, `thisArg`, sparse arrays, and truthiness filtering must be reviewed before changing APIs.
 
 ### `no-reduce-accumulator-copy`
 

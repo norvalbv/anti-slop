@@ -604,6 +604,15 @@ const StatementTypes: Record<string, NodeTestObject> = {
   ),
 }
 
+/** Members of `declare module`/`declare namespace`/`declare global` blocks keep their compact export style. */
+function isInAmbientModule(node: ASTNode): boolean {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (parent.type === 'TSModuleDeclaration' && parent.declare)
+      return true
+  }
+  return false
+}
+
 /**
  * Build the vendored padding rule with caller-owned, typed policy options.
  * `statementTypes` registers caller-defined statement types, looked up before
@@ -612,6 +621,7 @@ const StatementTypes: Record<string, NodeTestObject> = {
 export default function createPaddingLineRule<Extra extends string = never>(
   options: PolicyOptions<NoInfer<Extra>>,
   statementTypes?: Record<Extra, NodeTestObject>,
+  skipPair?: (prevNode: ASTNode, nextNode: ASTNode) => boolean,
 ): CreateRule {
 const customStatementTypes: Partial<Record<string, NodeTestObject>> = statementTypes ?? {}
 return {
@@ -686,6 +696,7 @@ return {
   },
   create(context) {
     const sourceCode = context.sourceCode
+    const isDeclarationFile = /\.d\.[cm]?ts$/.test(context.filename)
 
     const selectorMatchedNodes = new Map<string, Set<ASTNode>>()
     const pendingPairs: { prevNode: ASTNode, nextNode: ASTNode }[] = []
@@ -752,11 +763,11 @@ return {
         innerStatementNode = innerStatementNode.body
 
       if (Array.isArray(type))
-        return type.some(match.bind(null, innerStatementNode))
+        return type.some(match.bind(null, node))
 
       if (isSelectorOption(type)) {
         const matchedNodes = selectorMatchedNodes.get(type.selector)
-        if (!matchedNodes?.has(innerStatementNode))
+        if (!matchedNodes?.has(node) && !matchedNodes?.has(innerStatementNode))
           return false
 
         const lineMode = type.lineMode
@@ -769,6 +780,15 @@ return {
         return true
       }
       else {
+        if (!customStatementTypes[type]
+          && (innerStatementNode.type === 'ExportNamedDeclaration'
+            || innerStatementNode.type === 'ExportDefaultDeclaration')
+          && innerStatementNode.declaration
+          && !isDeclarationFile
+          && !isInAmbientModule(innerStatementNode)
+          && !['export', 'singleline-export', 'multiline-export', 'default'].includes(type))
+          innerStatementNode = innerStatementNode.declaration
+
         const statementType = customStatementTypes[type] ?? StatementTypes[type]
         if (statementType === undefined)
           throw new Error(`Padding rule invariant: unsupported statement type ${type}`)
@@ -858,6 +878,10 @@ return {
       // Save this node as the current previous statement.
       const prevNode = scopeInfo!.prevNode
 
+      // An attached same-line `;` (`function f() {};`) belongs to the statement before it.
+      if (prevNode && node.type === 'EmptyStatement' && prevNode.loc.end.line === node.loc.start.line)
+        return
+
       // Verify.
       if (prevNode)
         pendingPairs.push({ prevNode, nextNode: node })
@@ -867,6 +891,9 @@ return {
 
     function verifyPendingPairs(): void {
       for (const { prevNode, nextNode } of pendingPairs) {
+        if (skipPair?.(prevNode, nextNode))
+          continue
+
         const type = getPaddingType(prevNode, nextNode)
         const paddingLines = getPaddingLineSequences(prevNode, nextNode)
 
