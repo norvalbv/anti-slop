@@ -1,6 +1,6 @@
 import type { ESTree, Scope, SourceCode, Variable } from "@oxlint/plugins";
 
-import { createTypeAliasEnvironment, hasVisibleTypeBinding } from "./type-alias-resolution.ts";
+import { createTypeAliasEnvironment, hasVisibleTypeDeclaration } from "./type-alias-resolution.ts";
 
 /** Unwrap syntax-only wrappers when inspecting array methods and accumulator references. */
 export function unwrapArrayExpression(node: ESTree.Node): ESTree.Node {
@@ -55,7 +55,7 @@ function isArrayAnnotation(sourceCode: SourceCode, type: ESTree.TSType): boolean
   return (
     type.type === "TSTypeReference" && type.typeName.type === "Identifier" &&
     (type.typeName.name === "Array" || type.typeName.name === "ReadonlyArray") &&
-    !hasVisibleTypeBinding(type.typeName.name, type, createTypeAliasEnvironment(sourceCode.ast, sourceCode.visitorKeys))
+    !hasVisibleTypeDeclaration(type.typeName.name, type, createTypeAliasEnvironment(sourceCode.ast, sourceCode.visitorKeys))
   );
 }
 
