@@ -78,11 +78,26 @@ function isArrayFactoryCall(
   );
 }
 
-/** `value.split(",")` or `value.split(/,/)`: a literal separator is `String#split`, which returns an array. A `super` receiver is a class method, not a string. */
+const STRING_RETURNING_METHODS: ReadonlySet<string> = new Set([
+  "trim", "trimStart", "trimEnd", "toLowerCase", "toUpperCase", "replace", "replaceAll",
+  "slice", "substring", "normalize", "padStart", "padEnd", "toString", "join",
+]);
+
+/** Calls, constructions and `this`/`super` can be wrappers with their own `split` (a lodash chain), so only String-returning method calls pass. */
+function isPossibleStringReceiver(node: ESTree.Node): boolean {
+  node = unwrapArrayExpression(node);
+  if (node.type === "CallExpression") {
+    const method = arrayMethodTarget(node.callee);
+    return method !== null && STRING_RETURNING_METHODS.has(method.name) && isPossibleStringReceiver(method.object);
+  }
+  return !["Super", "ThisExpression", "NewExpression", "TaggedTemplateExpression"].includes(node.type);
+}
+
+/** `value.split(",")` or `value.split(/,/)`: a literal separator on a possible string is `String#split`, which returns an array. */
 function isLiteralSplitCall(node: ESTree.CallExpression, method: { readonly name: string; readonly object: ESTree.Node }): boolean {
   const [separator] = node.arguments;
   return (
-    method.name === "split" && method.object.type !== "Super" &&
+    method.name === "split" && isPossibleStringReceiver(method.object) &&
     separator?.type === "Literal" &&
     (typeof separator.value === "string" || "regex" in separator)
   );
