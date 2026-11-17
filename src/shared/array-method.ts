@@ -59,6 +59,11 @@ function isArrayAnnotation(sourceCode: SourceCode, type: ESTree.TSType): boolean
   );
 }
 
+/** Interfaces and type aliases (including global augmentations) share a name with a value without shadowing it. */
+export function isTypeOnlyDefinition(definition: Variable["defs"][number]): boolean {
+  return definition.node.type === "TSInterfaceDeclaration" || definition.node.type === "TSTypeAliasDeclaration";
+}
+
 const ARRAY_FACTORIES: ReadonlyMap<string, readonly string[]> = new Map([
   ["Array", ["from", "of"]],
   ["Object", ["entries", "keys", "values"]],
@@ -72,10 +77,7 @@ function isArrayFactoryCall(
   const owner = unwrapArrayExpression(method.object);
   if (owner.type !== "Identifier" || ARRAY_FACTORIES.get(owner.name)?.includes(method.name) !== true) return false;
   const binding = resolveArrayBinding(sourceCode, owner);
-  // Type-only declarations (global augmentations, type aliases) do not shadow the runtime value.
-  return binding === null || binding.defs.every(definition =>
-    definition.node.type === "TSInterfaceDeclaration" || definition.node.type === "TSTypeAliasDeclaration",
-  );
+  return binding === null || binding.defs.every(isTypeOnlyDefinition);
 }
 
 /** `value.split(",")` or `value.split(/,/)`: a literal separator is `String#split`, which returns an array. A `super` receiver is a class method, not a string. */

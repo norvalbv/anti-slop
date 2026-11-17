@@ -4,6 +4,7 @@ import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 import {
   arrayMethodTarget,
   isKnownArrayExpression,
+  isTypeOnlyDefinition,
   resolveArrayBinding,
   unwrapArrayExpression,
 } from "../shared/array-method.ts";
@@ -70,13 +71,15 @@ function isKnownNonArrayReceiver(sourceCode: SourceCode, node: ESTree.Node, visi
   node = unwrapArrayExpression(node);
   if (NON_ARRAY_EXPRESSIONS.has(node.type)) return true;
   const variable = resolveArrayBinding(sourceCode, node);
-  if (variable === null || visited.has(variable) || variable.defs.length === 0) return false;
+  if (variable === null || visited.has(variable)) return false;
   const cached = nonArrayBindings.get(variable);
   if (cached !== undefined) return cached;
   const topLevel = visited.size === 0;
   visited.add(variable);
-  const verdict = !variable.references.some(reference => reference.isWrite() && !reference.init) &&
-    variable.defs.every(definition => {
+  const valueDefinitions = variable.defs.filter(definition => !isTypeOnlyDefinition(definition));
+  const verdict = valueDefinitions.length > 0 &&
+    !variable.references.some(reference => reference.isWrite() && !reference.init) &&
+    valueDefinitions.every(definition => {
       if (definition.type === "ClassName" || definition.type === "FunctionName") return true;
       const init = constInitializer(definition);
       return init !== null && isKnownNonArrayReceiver(sourceCode, init, visited);
