@@ -10,6 +10,8 @@ const prelude = "type Command = () => void; const startCommand = () => {};";
 
 tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 	valid: [
+		`${prelude} type Key<T> = T; const commands: Record<Key<'start'>, Command> = { start: startCommand };`,
+		`${prelude} type Key<T = 'start'> = T; const commands: Record<Key, Command> = { start: startCommand };`,
 		`${prelude} const commands: Record<string, Command> = {};`,
 		`${prelude} type Index<T> = Record<string, T>; const commands: Index<Command> = {};`,
 		`${prelude} class Registry { commands: Record<string, Command> = {}; }`,
@@ -38,8 +40,25 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"function isString(value: unknown): value is string { return true; } declare const input: unknown; isString(input);",
 		"function isString(value: string | unknown): value is string { return true; } declare const input: string | unknown; isString(input);",
 		"function isString(value: unknown): value is string { return true; } declare function readInput(): unknown; isString(readInput());",
+		"type A<T = T> = T; const value: A = { a: 'x' };",
+		"type A<T = U, U = T> = Record<T, string>; const value: A = { a: 'x' };",
+		'type Identity<T> = T; type Wrapped<T> = Identity<Readonly<T>>; const value: Wrapped<string> = "x";',
+		'type Pair<T, U extends PropertyKey> = Record<U, T>; type Outer<T extends PropertyKey, U extends PropertyKey> = Pair<U, T>; const closedKey: Outer<"a", string> = { a: "x" };',
+		`${prelude} type Keys = "start"; type K = Keys; type Dict<V> = Record<K, V>; type Outer<K> = Dict<Command>; const commands: Outer<string> = { start: startCommand };`,
+		`${prelude} type Second<T, U> = U; type Outer<T, U> = Record<Second<U, T>, Command>; const commands: Outer<"start", string> = { start: startCommand };`,
+		`${prelude} type Key<T> = T; function build<T extends string>(extra: Record<T, Command>) { const all: Record<Key<T | "start">, Command> = { ...extra, start: startCommand }; return all; }`,
+		'type Field<K extends string> = K; type Form<K extends string> = Record<Field<K | "id">, string>; const form: Form<"name"> = { id: "1", name: "x" };',
+		"function isString(value: unknown): value is string { return typeof value === 'string'; } export function describe(value: string | number): string { return isString(value) ? value : String(value + 1); }",
+		"function isString(value: unknown): value is string { return true; } type StringOrNumber = string | number; function check(value: StringOrNumber): boolean { return isString(value); }",
+		"function isString(value: unknown): value is string { return true; } function check(value: unknown): boolean { return isString(value as string | number); }",
+		"function isString(value: unknown): value is string { return true; } declare function getValue(): string | number; function check(): boolean { return isString(getValue()); }",
 	],
 	invalid: [
+		{ code: `${prelude} const holder = class Record {}; const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
+		{ code: `${prelude} type Key<T> = T; const commands: Record<Key<string>, Command> = { start: startCommand };`, errors: [error] },
+		{ code: `${prelude} const commands: Record<any, Command> = { start: startCommand };`, errors: [error] },
+		{ code: `${prelude} type Key<T = string> = T; const commands: Record<Key, Command> = { start: startCommand };`, errors: [error] },
+		{ code: `${prelude} type Key<T> = T; type Outer<T> = Key<T>; const commands: Record<Outer<string>, Command> = { start: startCommand };`, errors: [error] },
 		{ code: "const value: unknown = {};", errors: [error] },
 		{ code: "const value: object = {};", errors: [error] },
 		{ code: "let value: unknown; value = {};", errors: [error] },
@@ -138,6 +157,26 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		},
 		{ code: "const value: unknown = 1;", errors: [error] },
 		{ code: "const value: object = [];", errors: [error] },
+		{
+			code: 'type Pair<T, U extends PropertyKey> = Record<U, T>; type Outer<T extends PropertyKey, U extends PropertyKey> = Pair<U, T>; const openKey: Outer<string, "a"> = { x: "a" };',
+			errors: [error],
+		},
+		{
+			code: `${prelude} type K = string; type Dict<V> = Record<K, V>; type Outer<K> = Dict<K>; const commands: Outer<Command> = { start: startCommand };`,
+			errors: [error],
+		},
+		{
+			code: `${prelude} type Second<T, U> = U; type Outer<T, U> = Record<Second<U, T>, Command>; const commands: Outer<string, "start"> = { start: startCommand };`,
+			errors: [error],
+		},
+		{
+			code: `${prelude} type Key<T> = T; type Outer<T> = Record<Key<"a" | T>, Command>; const commands: Outer<string> = { start: startCommand };`,
+			errors: [error],
+		},
+		{
+			code: `${prelude} type Key<T> = T; type Outer<Key> = Record<Key, Command>; const commands: Outer<Key<string>> = { start: startCommand };`,
+			errors: [error],
+		},
 		{
 			code: "function isString(value: unknown): value is string { return true; } isString('known');",
 			errors: [error],
