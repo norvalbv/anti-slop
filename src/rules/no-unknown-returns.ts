@@ -43,6 +43,7 @@ const statementBody = (node: ESTree.Node): Array<ESTree.Node> | null => {
   if (
     node.type === "Program" ||
     node.type === "BlockStatement" ||
+    node.type === "StaticBlock" ||
     node.type === "TSModuleBlock"
   ) {
     return node.body;

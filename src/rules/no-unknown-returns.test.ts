@@ -45,6 +45,12 @@ export default function (key: string): unknown { return registry.get(key); }`,
   0(key: "count"): number;
   0(key: string): unknown { return registry.get(key); }
 }`,
+    `class Registry {
+  static {
+    function read(key: "count"): number;
+    function read(key: string): unknown { return registry.get(key); }
+  }
+}`,
   ],
   invalid: [
     { code: "function load(): unknown { return input; }", errors: [error] },
