@@ -40,6 +40,9 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"function isString(value: unknown): value is string { return true; } declare function readInput(): unknown; isString(readInput());",
 		"type A<T = T> = T; const value: A = { a: 'x' };",
 		"type A<T = U, U = T> = Record<T, string>; const value: A = { a: 'x' };",
+		'type Identity<T> = T; type Wrapped<T> = Identity<Readonly<T>>; const value: Wrapped<string> = "x";',
+		'type Pair<T, U extends PropertyKey> = Record<U, T>; type Outer<T extends PropertyKey, U extends PropertyKey> = Pair<U, T>; const closedKey: Outer<"a", string> = { a: "x" };',
+		`${prelude} type Keys = "start"; type K = Keys; type Dict<V> = Record<K, V>; type Outer<K> = Dict<Command>; const commands: Outer<string> = { start: startCommand };`,
 	],
 	invalid: [
 		{ code: "const value: unknown = {};", errors: [error] },
@@ -140,6 +143,14 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		},
 		{ code: "const value: unknown = 1;", errors: [error] },
 		{ code: "const value: object = [];", errors: [error] },
+		{
+			code: 'type Pair<T, U extends PropertyKey> = Record<U, T>; type Outer<T extends PropertyKey, U extends PropertyKey> = Pair<U, T>; const openKey: Outer<string, "a"> = { x: "a" };',
+			errors: [error],
+		},
+		{
+			code: `${prelude} type K = string; type Dict<V> = Record<K, V>; type Outer<K> = Dict<K>; const commands: Outer<Command> = { start: startCommand };`,
+			errors: [error],
+		},
 		{
 			code: "function isString(value: unknown): value is string { return true; } isString('known');",
 			errors: [error],

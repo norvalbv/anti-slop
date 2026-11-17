@@ -40,6 +40,7 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"type A<T = T> = Record<string, T>; type B = A;",
 		"type A<T = U, U = T> = Record<string, T>; type B = A;",
 		"type A<T = Readonly<T>> = Record<string, T>; type B = A;",
+		"type Identity<T> = T; type Wrapped<T> = Identity<Readonly<T>>; type Values = Record<string, Wrapped<string>>;",
 	],
 	invalid: [
 		{ code: "type A = Record<string, unknown>;", errors: [error] },
