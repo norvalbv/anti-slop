@@ -3,7 +3,7 @@ import type { ESTree, Variable } from "@oxlint/plugins";
 
 import {
   createTypeAliasEnvironment,
-  hasVisibleTypeBinding,
+  hasVisibleTypeDeclaration,
   type TypeAliasEnvironment,
 } from "../shared/type-alias-resolution.ts";
 
@@ -42,7 +42,7 @@ function isGlobalTypeReference(
   name: string,
   environment: TypeAliasEnvironment,
 ): boolean {
-  return typeReferenceName(type) === name && !hasVisibleTypeBinding(name, type, environment);
+  return typeReferenceName(type) === name && !hasVisibleTypeDeclaration(name, type, environment);
 }
 
 function isUnknownOrAnyType(type: ESTree.TSType): boolean {
