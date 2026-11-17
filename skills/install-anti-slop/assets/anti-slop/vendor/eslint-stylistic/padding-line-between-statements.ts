@@ -604,6 +604,15 @@ const StatementTypes: Record<string, NodeTestObject> = {
   ),
 }
 
+/** Members of `declare module`/`declare namespace`/`declare global` blocks keep their compact export style. */
+function isInAmbientModule(node: ASTNode): boolean {
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (parent.type === 'TSModuleDeclaration' && parent.declare)
+      return true
+  }
+  return false
+}
+
 /**
  * Build the vendored padding rule with caller-owned, typed policy options.
  * `statementTypes` registers caller-defined statement types, looked up before
@@ -687,6 +696,7 @@ return {
   },
   create(context) {
     const sourceCode = context.sourceCode
+    const isDeclarationFile = /\.d\.[cm]?ts$/.test(context.filename)
 
     const selectorMatchedNodes = new Map<string, Set<ASTNode>>()
     const pendingPairs: { prevNode: ASTNode, nextNode: ASTNode }[] = []
@@ -774,6 +784,8 @@ return {
           && (innerStatementNode.type === 'ExportNamedDeclaration'
             || innerStatementNode.type === 'ExportDefaultDeclaration')
           && innerStatementNode.declaration
+          && !isDeclarationFile
+          && !isInAmbientModule(innerStatementNode)
           && !['export', 'singleline-export', 'multiline-export', 'default'].includes(type))
           innerStatementNode = innerStatementNode.declaration
 

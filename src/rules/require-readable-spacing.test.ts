@@ -11,6 +11,10 @@ tester.run("anti-slop/require-readable-spacing", requireReadableSpacingRule, {
     "function f() {};",
     "function f() {};\n\nfunction g() {}",
     "namespace Types {\nexport interface A {}\n\nexport interface B {}\n}",
+    "declare module 'x' {\n  export interface A { a: string }\n  export type B = string;\n}",
+    "declare namespace Types {\n  namespace Inner {\n    export interface A {}\n    export interface B {}\n  }\n}",
+    "declare global {\n  export interface A {}\n  export interface B {}\n}",
+    { code: "export namespace Types {\n  export interface A {}\n  export interface B {}\n}", filename: "types.d.ts" },
     "function f() {\nfirst: foo();\nsecond: bar();\n}",
     "export declare function parse(value: string): string;\nexport function parse(value: string) { return value; }",
     "import { a } from 'a';\nimport { b } from 'b';\n\nexport const c = a + b;",
@@ -41,6 +45,7 @@ tester.run("anti-slop/require-readable-spacing", requireReadableSpacingRule, {
     { code: "namespace Types {\nexport type A = string;\nexport type B = number;\n}", output: "namespace Types {\nexport type A = string;\n\nexport type B = number;\n}", errors: [error] },
     { code: "declare function parse(value: string): string;\nfunction render() {}", output: "declare function parse(value: string): string;\n\nfunction render() {}", errors: [error] },
     { code: "namespace Types {\nexport interface A {}\nexport interface B {}\n}", output: "namespace Types {\nexport interface A {}\n\nexport interface B {}\n}", errors: [error] },
+    { code: "export namespace Types {\nexport interface A {}\nexport interface B {}\n}", output: "export namespace Types {\nexport interface A {}\n\nexport interface B {}\n}", errors: [error] },
     { code: "first: foo();\nsecond: bar();", output: "first: foo();\n\nsecond: bar();", errors: [error] },
     {
       code: "const a = 1;\n/** B docs. */\nconst b = 2;",
