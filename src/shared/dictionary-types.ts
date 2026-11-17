@@ -379,7 +379,8 @@ function isBroadMappedKey(
 	if (
 		unwrapped.type === "TSStringKeyword" ||
 		unwrapped.type === "TSNumberKeyword" ||
-		unwrapped.type === "TSSymbolKeyword"
+		unwrapped.type === "TSSymbolKeyword" ||
+		unwrapped.type === "TSAnyKeyword"
 	) {
 		return true;
 	}
@@ -402,16 +403,14 @@ function isBroadMappedKey(
 	}
 	if (name === "PropertyKey" && isBuiltIn(name, unwrapped, environment)) return true;
 	const alias = visibleTypeAlias(name, unwrapped, environment.typeAliases);
-	if (
-		alias === null ||
-		(alias.typeParameters?.params.length ?? 0) > 0 ||
-		visitedAliases.has(name)
-	) {
+	if (alias === null || visitedAliases.has(name)) {
 		return false;
 	}
+	const nextSubstitutions = aliasSubstitution(alias, unwrapped, substitutions);
+	if (nextSubstitutions === null) return false;
 	const nextVisited = new Set(visitedAliases);
 	nextVisited.add(name);
-	return isBroadMappedKey(alias.typeAnnotation, environment, new Map(), nextVisited);
+	return isBroadMappedKey(alias.typeAnnotation, environment, nextSubstitutions, nextVisited);
 }
 
 function classifyAliasBroadTarget(

@@ -41,8 +41,11 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"type A<T = U, U = T> = Record<string, T>; type B = A;",
 		"type A<T = Readonly<T>> = Record<string, T>; type B = A;",
 		"type Identity<T> = T; type Wrapped<T> = Identity<Readonly<T>>; type Values = Record<string, Wrapped<string>>;",
+		"const holder = class Record { value: Record; };",
 	],
 	invalid: [
+		{ code: "const holder = class Record {}; type A = Record<string, unknown>;", errors: [error] },
+		{ code: "const holder = class Record {}; function later() { type A = Record<string, unknown>; }", errors: [error] },
 		{ code: "type A = Record<string, unknown>;", errors: [error] },
 		{
 			code: "type Inner<A extends PropertyKey, B> = Record<A, B>; type Outer<A, B extends PropertyKey> = Inner<B, A>; type Unsafe = Outer<unknown, string>;",
