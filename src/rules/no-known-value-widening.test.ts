@@ -8,6 +8,17 @@ const error = { messageId: "widening" };
 
 const prelude = "type Command = () => void; const startCommand = () => {};";
 
+const aliasChain = (depth: number, alias: (level: number) => string): string =>
+	Array.from({ length: depth }, (_, level) => alias(level + 1)).join(" ");
+// Each alias repeats the one below it, so expanding `K30` naively takes 2^30 steps.
+const doublingKeys = `type K0<T> = T; ${aliasChain(30, (k) => `type K${k}<T> = K${k - 1}<T> | K${k - 1}<T>;`)}`;
+const doublingPlainKeys = `type P0 = "start"; ${aliasChain(30, (k) => `type P${k} = P${k - 1} | P${k - 1};`)}`;
+// `L30<string>` holds `string` only after 2^30 literal members, past any expansion budget.
+const lateBroadKeys = `type L0<T> = T; ${aliasChain(30, (k) => `type L${k}<T> = L${k - 1}<"x"> | L${k - 1}<T>;`)}`;
+const selfComposed = `type A0<T> = T | T; ${aliasChain(30, (k) => `type A${k}<T> = A${k - 1}<A${k - 1}<T>>;`)}`;
+const twoLevels = (depth: number, inner: string): string =>
+	Array.from({ length: depth }).reduce<string>((type) => `Two<${type}>`, inner);
+
 tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 	valid: [
 		`${prelude} type Key<T> = T; const commands: Record<Key<'start'>, Command> = { start: startCommand };`,
@@ -78,8 +89,20 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"type Item = { id: number }; let check = (value: unknown): value is Item => true; check = (value: unknown): value is Item => false; check({ id: 1 });",
 		"type Item = { id: number }; let check = (value: unknown): value is Item => true; function swap() { check = (value: unknown): value is Item => false; } check({ id: 1 });",
 		"function isString(value: unknown): value is string { return typeof value === 'string'; } let read = (): string => 'x'; read = (() => 1) as never; isString(read());",
+		`${prelude} ${doublingKeys} const commands: Record<K30<"start">, Command> = { start: startCommand };`,
+		`${prelude} ${doublingPlainKeys} const commands: Record<P30, Command> = { start: startCommand };`,
+		// An undecided source annotation is neither reported nor treated as known evidence.
+		`${prelude} ${lateBroadKeys} const source: Record<L30<string>, Command> = { start: startCommand }; const commands: Record<string, Command> = source;`,
+		`${selfComposed} function isPayload(value: unknown): value is A30<unknown> { return true; } function check(input: A30<unknown>) { return isPayload(input); }`,
 	],
 	invalid: [
+		{ code: `${prelude} type Id<T> = T; const commands: Id<Id<Record<string, Command>>> = { start: startCommand };`, errors: [error] },
+		{ code: `${prelude} type Key<Key> = Key; const commands: Record<Key<Key<string>>, Command> = { start: startCommand };`, errors: [error] },
+		{ code: `${prelude} ${doublingKeys} const commands: Record<K30<"start"> | string, Command> = { start: startCommand };`, errors: [error] },
+		{
+			code: `${prelude} type Two<T> = T | T; type Id<T> = T; const commands: Record<${twoLevels(30, '"start"')} | Id<string>, Command> = { start: startCommand };`,
+			errors: [error],
+		},
 		{ code: `${prelude} const holder = class Record {}; const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
 		{ code: `${prelude} type Key<T> = T; const commands: Record<Key<string>, Command> = { start: startCommand };`, errors: [error] },
 		{ code: `${prelude} const commands: Record<any, Command> = { start: startCommand };`, errors: [error] },

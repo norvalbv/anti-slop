@@ -6,6 +6,13 @@ const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" }
 
 const error = { messageId: "unsafeDictionary" };
 
+// Each level doubles the work of a resolver that re-expands a repeated argument.
+const nested = (wrapper: string, depth: number, inner: string): string =>
+	Array.from({ length: depth }).reduce<string>((type) => `${wrapper}<${type}>`, inner);
+// `A{k}<T>` instantiates `A0` 2^k times, so only an expansion budget bounds it.
+const selfComposed = (depth: number): string =>
+	Array.from({ length: depth }, (_, k) => `type A${k + 1}<T> = A${k}<A${k}<T>>;`).join(" ");
+
 tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 	valid: [
 		"type Commands = Record<string, Command>;",
@@ -52,8 +59,19 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"type Dict<T = unknown> = Record<string, T>; function f<T>(value: Dict<T>) {}",
 		"type Dict<T = unknown> = Map<string, T>; let value: Dict;",
 		"type Handler<T = unknown> = (value: T) => void; let handler: Handler;",
+		`type Two<T> = T | T; type Values = Record<string, ${nested("Two", 30, "Command")}>;`,
+		`type A0<T> = T | T; ${selfComposed(30)} type Values = Record<string, A30<Command>>;`,
 	],
 	invalid: [
+		{
+			code: `type Two<T> = T | T; type Id<T> = T; type Values = Record<string, ${nested("Two", 30, "Command")} | Id<unknown>>;`,
+			errors: [error],
+		},
+		{ code: "type Maybe<T> = T | null; type Values = Record<string, Maybe<Maybe<unknown>>>;", errors: [error] },
+		{
+			code: "type Maybe<T> = T | null; type Box<T> = Record<string, T>; type Values = Box<Maybe<Maybe<unknown>>>;",
+			errors: [error],
+		},
 		{ code: "const holder = class Record {}; type A = Record<string, unknown>;", errors: [error] },
 		{ code: "const holder = class Record {}; function later() { type A = Record<string, unknown>; }", errors: [error] },
 		{ code: "type A = Record<string, unknown>;", errors: [error] },
