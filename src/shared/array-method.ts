@@ -109,20 +109,51 @@ function staticPropertyName(key: ESTree.Node, computed: boolean): string | null 
   return null;
 }
 
+/** Per-file caches: oxlint builds fresh AST nodes and Variables for every file, so entries never cross files. */
+const memberIndexes = new WeakMap<ESTree.Node, ReadonlyMap<string, ESTree.Node | null> | null>();
+const propertyWrites = new WeakMap<Variable, boolean>();
+const reassignments = new WeakMap<Variable, boolean>();
+
+function memoised<K extends object, V>(cache: WeakMap<K, V>, key: K, compute: () => V): V {
+  const cached = cache.get(key);
+  if (cached !== undefined) return cached;
+  const value = compute();
+  cache.set(key, value);
+  return value;
+}
+
+/** Each static key maps to its sole member, or null when repeated; a spread or dynamic object key may replace any property, so the index is null. */
+function staticMemberIndex(node: ESTree.ObjectExpression | ESTree.TSTypeLiteral): ReadonlyMap<string, ESTree.Node | null> | null {
+  return memoised(memberIndexes, node, () => {
+    const index = new Map<string, ESTree.Node | null>();
+    for (const member of node.type === "ObjectExpression" ? node.properties : node.members) {
+      const name = member.type === "Property" || member.type === "TSPropertySignature" ? staticPropertyName(member.key, member.computed) : null;
+      if (name !== null) index.set(name, index.has(name) ? null : member);
+      else if (member.type === "Property" || member.type === "SpreadElement") return null;
+    }
+    return index;
+  });
+}
+
+function isReassigned(variable: Variable): boolean {
+  return memoised(reassignments, variable, () => variable.references.some(reference => reference.isWrite() && !reference.init));
+}
+
 function isArrayPropertyAnnotation(sourceCode: SourceCode, type: ESTree.TSType, path: readonly string[]): boolean {
   if (path.length === 0) return isArrayAnnotation(sourceCode, type);
   if (type.type === "TSParenthesizedType") return isArrayPropertyAnnotation(sourceCode, type.typeAnnotation, path);
   if (type.type !== "TSTypeLiteral") return false;
-  const properties = type.members.filter(member =>
-    member.type === "TSPropertySignature" && staticPropertyName(member.key, member.computed) === path[0],
-  );
-  const property = properties[0];
-  return properties.length === 1 && property?.type === "TSPropertySignature" &&
+  const property = staticMemberIndex(type)?.get(path[0]);
+  return property?.type === "TSPropertySignature" &&
     property.typeAnnotation !== null && isArrayPropertyAnnotation(sourceCode, property.typeAnnotation.typeAnnotation, path.slice(1));
 }
 
 /** Reject explicit property writes through the receiver or its local aliases. */
-function hasPropertyWrite(sourceCode: SourceCode, variable: Variable, visited = new Set<Variable>()): boolean {
+function hasPropertyWrite(sourceCode: SourceCode, variable: Variable): boolean {
+  return memoised(propertyWrites, variable, () => hasPropertyWriteThrough(sourceCode, variable, new Set()));
+}
+
+function hasPropertyWriteThrough(sourceCode: SourceCode, variable: Variable, visited: Set<Variable>): boolean {
   if (visited.has(variable)) return false;
   if (visited.size >= 32) return true;
   visited.add(variable);
@@ -152,7 +183,7 @@ function hasPropertyWrite(sourceCode: SourceCode, variable: Variable, visited = 
       // Destructured aliases can expose nested objects that subsequently receive writes.
       if (parent.id.type !== "Identifier") return true;
       const alias = resolveArrayBinding(sourceCode, parent.id);
-      if (alias !== null && hasPropertyWrite(sourceCode, alias, visited)) return true;
+      if (alias !== null && hasPropertyWriteThrough(sourceCode, alias, visited)) return true;
     }
   }
   return false;
@@ -176,21 +207,14 @@ function isKnownArrayProperty(
     return isKnownArrayProperty(sourceCode, member.object, [member.name, ...path], visited, depth + 1);
   }
   if (node.type === "ObjectExpression") {
-    // Spreads and dynamic keys may replace the property, even when a literal array is present.
-    if (node.properties.some(property =>
-      property.type === "SpreadElement" || staticPropertyName(property.key, property.computed) === null,
-    )) return false;
-    const properties = node.properties.filter(property =>
-      property.type === "Property" && staticPropertyName(property.key, property.computed) === path[0],
-    );
-    const property = properties[0];
-    return properties.length === 1 && property?.type === "Property" && property.kind === "init" &&
+    const property = staticMemberIndex(node)?.get(path[0]);
+    return property?.type === "Property" && property.kind === "init" &&
       !property.method && isKnownArrayProperty(sourceCode, property.value, path.slice(1), visited, depth + 1);
   }
   const variable = resolveArrayBinding(sourceCode, node);
   if (variable === null || visited.has(variable) || visited.size >= MAX_RESOLVED_BINDINGS || hasPropertyWrite(sourceCode, variable)) return false;
   visited.add(variable);
-  if (variable.references.some(reference => reference.isWrite() && !reference.init)) return false;
+  if (isReassigned(variable)) return false;
   for (const identifier of variable.identifiers) {
     const annotation = identifier.typeAnnotation?.typeAnnotation;
     if (annotation !== undefined) return isArrayPropertyAnnotation(sourceCode, annotation, path);
@@ -228,7 +252,7 @@ export function isKnownArrayExpression(
   const variable = resolveArrayBinding(sourceCode, node);
   if (variable === null || visited.has(variable) || visited.size >= MAX_RESOLVED_BINDINGS) return false;
   visited.add(variable);
-  if (variable.references.some(reference => reference.isWrite() && !reference.init)) return false;
+  if (isReassigned(variable)) return false;
   for (const identifier of variable.identifiers) {
     const annotation = identifier.typeAnnotation?.typeAnnotation;
     if (annotation !== undefined) return isArrayAnnotation(sourceCode, annotation);

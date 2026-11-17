@@ -8,11 +8,16 @@ const propertyChain = (length: number) =>
   ["const a0 = { w: [] };", ...Array.from({ length }, (_, i) => `const a${i + 1} = { w: a${i}.w };`), `a${length}.w.filter(x).map(y);`].join("\n");
 const aliasChain = (length: number) =>
   ["const a0 = [];", ...Array.from({ length }, (_, i) => `const a${i + 1} = a${i};`), `a${length}.filter(x).map(y);`].join("\n");
+const repeated = (count: number, line: (index: number) => string) => Array.from({ length: count }, (_, i) => line(i)).join("\n");
 
 tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
   valid: [
     propertyChain(2000),
     aliasChain(5000),
+    // Each of these hangs for minutes unless per-binding results and object keys are cached per file.
+    ["const a0 = { items: load() };", repeated(28, i => `const a${i + 1} = a${i};`), repeated(4000, () => "a28.items.filter(f).map(g);")].join("\n"),
+    [`const obj = { ${repeated(16000, i => `p${i}: ${i},`)} };`, repeated(16000, i => `obj.p${i}.filter(f).map(g);`)].join("\n"),
+    ["let xs = [];", repeated(32000, () => "xs.filter(f).map(g);"), "xs = [];"].join("\n"),
     "const users = []; users.values().filter(active).map(email).toArray();",
     "const users = []; users.values().map(email).filter(Boolean).toArray();",
     "Iterator.from(users).filter(active).map(email).toArray();",
