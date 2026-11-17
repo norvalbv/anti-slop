@@ -301,6 +301,11 @@ function isOptionalParameterAnnotation(annotation: ESTree.TSTypeAnnotation): boo
 	return annotation.parent.type === "Identifier" && Boolean(annotation.parent.optional);
 }
 
+/** `as const` keeps the asserted expression's own type, so the expression stays the evidence. */
+function isConstType(type: ESTree.TSType): boolean {
+	return type.type === "TSTypeReference" && type.typeName.type === "Identifier" && type.typeName.name === "const";
+}
+
 /** Whether a guard call cannot narrow its argument: a known value, or a declared type the predicate already holds. */
 function isRedundantGuardArgument(
 	sourceCode: SourceCode,
@@ -310,7 +315,12 @@ function isRedundantGuardArgument(
 	nonNull = false,
 	visitedVariables = new Set<Variable>(),
 ): boolean {
-	if (expression.type === "ParenthesizedExpression" || expression.type === "TSSatisfiesExpression") {
+	if (
+		expression.type === "ParenthesizedExpression" ||
+		expression.type === "TSSatisfiesExpression" ||
+		((expression.type === "TSAsExpression" || expression.type === "TSTypeAssertion") &&
+			isConstType(expression.typeAnnotation))
+	) {
 		return isRedundantGuardArgument(
 			sourceCode,
 			expression.expression,
