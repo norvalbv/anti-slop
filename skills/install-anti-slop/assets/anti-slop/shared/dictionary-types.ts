@@ -150,7 +150,9 @@ function aliasSubstitution(
 		const explicitArgument = arguments_[index];
 		const argument = explicitArgument ?? parameter.default;
 		if (argument === null || argument === undefined) return null;
-		next.set(parameter.name.name, boundArgument(argument, explicitArgument === undefined ? next : base));
+		// A default sees only the parameters declared before it, so `<T = T>` cannot bind to itself.
+		const written = explicitArgument === undefined ? new Map(next) : base;
+		next.set(parameter.name.name, boundArgument(argument, written));
 	}
 	return next;
 }

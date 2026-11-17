@@ -37,6 +37,9 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"type Deep<T extends Readonly<Record<string, unknown>>> = T;",
 		"type T = Command; type Body = Record<string, T>; type Outer<T> = Body; type A = Outer<unknown>;",
 		"type Box<T> = Record<string, T>; type ReadonlyBox<T> = Box<Readonly<T>>; type Safe = ReadonlyBox<{ id: string }>;",
+		"type A<T = T> = Record<string, T>; type B = A;",
+		"type A<T = U, U = T> = Record<string, T>; type B = A;",
+		"type A<T = Readonly<T>> = Record<string, T>; type B = A;",
 	],
 	invalid: [
 		{ code: "type A = Record<string, unknown>;", errors: [error] },

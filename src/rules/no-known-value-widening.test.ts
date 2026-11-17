@@ -38,6 +38,8 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"function isString(value: unknown): value is string { return true; } declare const input: unknown; isString(input);",
 		"function isString(value: string | unknown): value is string { return true; } declare const input: string | unknown; isString(input);",
 		"function isString(value: unknown): value is string { return true; } declare function readInput(): unknown; isString(readInput());",
+		"type A<T = T> = T; const value: A = { a: 'x' };",
+		"type A<T = U, U = T> = Record<T, string>; const value: A = { a: 'x' };",
 	],
 	invalid: [
 		{ code: "const value: unknown = {};", errors: [error] },
