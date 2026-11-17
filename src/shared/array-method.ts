@@ -83,10 +83,12 @@ const STRING_RETURNING_METHODS: ReadonlySet<string> = new Set([
   "slice", "substring", "normalize", "padStart", "padEnd", "toString", "join",
 ]);
 
-/** Calls, constructions and `this`/`super` can be wrappers with their own `split` (a lodash chain), so only String-returning method calls pass. */
+/** Lodash wrappers (`_(x)`, `_.chain(x)`), constructions and `this`/`super` have their own `split`; plain calls and String methods pass. */
 function isPossibleStringReceiver(node: ESTree.Node): boolean {
   node = unwrapArrayExpression(node);
   if (node.type === "CallExpression") {
+    const callee = unwrapArrayExpression(node.callee);
+    if (callee.type === "Identifier") return callee.name !== "_";
     const method = arrayMethodTarget(node.callee);
     return method !== null && STRING_RETURNING_METHODS.has(method.name) && isPossibleStringReceiver(method.object);
   }
