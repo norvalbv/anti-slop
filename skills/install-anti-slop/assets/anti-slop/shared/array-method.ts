@@ -143,6 +143,9 @@ function hasPropertyWrite(sourceCode: SourceCode, variable: Variable, visited = 
   return false;
 }
 
+/** `visited` is shared by the whole walk, so this caps binding hops across property and alias resolution alike. */
+const MAX_RESOLVED_BINDINGS = 32;
+
 function isKnownArrayProperty(
   sourceCode: SourceCode,
   node: ESTree.Node,
@@ -170,7 +173,7 @@ function isKnownArrayProperty(
       !property.method && isKnownArrayProperty(sourceCode, property.value, path.slice(1), visited, depth + 1);
   }
   const variable = resolveArrayBinding(sourceCode, node);
-  if (variable === null || visited.has(variable) || hasPropertyWrite(sourceCode, variable)) return false;
+  if (variable === null || visited.has(variable) || visited.size >= MAX_RESOLVED_BINDINGS || hasPropertyWrite(sourceCode, variable)) return false;
   visited.add(variable);
   if (variable.references.some(reference => reference.isWrite() && !reference.init)) return false;
   for (const identifier of variable.identifiers) {
@@ -208,7 +211,7 @@ export function isKnownArrayExpression(
   }
   if (node.type !== "Identifier") return false;
   const variable = resolveArrayBinding(sourceCode, node);
-  if (variable === null || visited.has(variable)) return false;
+  if (variable === null || visited.has(variable) || visited.size >= MAX_RESOLVED_BINDINGS) return false;
   visited.add(variable);
   if (variable.references.some(reference => reference.isWrite() && !reference.init)) return false;
   for (const identifier of variable.identifiers) {
