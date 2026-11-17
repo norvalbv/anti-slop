@@ -34,6 +34,12 @@ function enclosingReducer(node: ESTree.Node) {
   return null;
 }
 
+function constInitializer(definition: Variable["defs"][number]): ESTree.Expression | null {
+  return definition.type === "Variable" && definition.node.type === "VariableDeclarator" &&
+    definition.node.id.type === "Identifier" && definition.node.parent.type === "VariableDeclaration" &&
+    definition.node.parent.kind === "const" ? definition.node.init : null;
+}
+
 function referencesAccumulator(
   sourceCode: SourceCode,
   node: ESTree.Node,
@@ -46,15 +52,29 @@ function referencesAccumulator(
   visited.add(variable);
   if (variable.references.some(reference => reference.isWrite() && !reference.init)) return false;
   for (const definition of variable.defs) {
-    if (
-      definition.type === "Variable" && definition.node.type === "VariableDeclarator" &&
-      definition.node.id.type === "Identifier" && definition.node.init !== null &&
-      definition.node.parent.type === "VariableDeclaration" && definition.node.parent.kind === "const"
-    ) {
-      return referencesAccumulator(sourceCode, definition.node.init, accumulator, visited);
-    }
+    const init = constInitializer(definition);
+    if (init !== null) return referencesAccumulator(sourceCode, init, accumulator, visited);
   }
   return false;
+}
+
+const NON_ARRAY_EXPRESSIONS = new Set([
+  "ObjectExpression", "ClassExpression", "FunctionExpression", "ArrowFunctionExpression", "Literal", "TemplateLiteral",
+]);
+
+/** Object literals, classes, functions and primitives, directly or via unreassigned bindings; `new` stays unknown since Array subclasses exist. */
+function isKnownNonArrayReceiver(sourceCode: SourceCode, node: ESTree.Node, visited = new Set<Variable>()): boolean {
+  node = unwrapArrayExpression(node);
+  if (NON_ARRAY_EXPRESSIONS.has(node.type)) return true;
+  const variable = resolveArrayBinding(sourceCode, node);
+  if (variable === null || visited.has(variable) || variable.defs.length === 0) return false;
+  visited.add(variable);
+  if (variable.references.some(reference => reference.isWrite() && !reference.init)) return false;
+  return variable.defs.every(definition => {
+    if (definition.type === "ClassName" || definition.type === "FunctionName") return true;
+    const init = constInitializer(definition);
+    return init !== null && isKnownNonArrayReceiver(sourceCode, init, visited);
+  });
 }
 
 function isGlobalCopyOwner(sourceCode: SourceCode, node: ESTree.Node, name: string): boolean {
@@ -85,7 +105,7 @@ export const noReduceAccumulatorCopyRule = defineRule({
         const method = arrayMethodTarget(node.callee);
         if (method === null) return;
         const reducer = enclosingReducer(node);
-        if (reducer === null) return;
+        if (reducer === null || isKnownNonArrayReceiver(context.sourceCode, reducer.receiver)) return;
         const option = context.options?.[0];
         if (
           typeof option === "object" && option !== null && !Array.isArray(option) &&
