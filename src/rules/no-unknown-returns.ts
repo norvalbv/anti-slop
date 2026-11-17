@@ -4,6 +4,7 @@ import type { ESTree } from "@oxlint/plugins";
 
 import {
   createTypeAliasEnvironment,
+  hasVisibleTypeBinding,
   resolvedTypeMatches,
   type TypeAliasEnvironment,
 } from "../shared/type-alias-resolution.ts";
@@ -133,9 +134,10 @@ export const noUnknownReturnsRule = defineRule({
   createOnce(context) {
     let environment: TypeAliasEnvironment | null = null;
 
-    const resolvesToUnknown = (type: ESTree.TSType): boolean =>
-      environment !== null &&
-      resolvedTypeMatches(type, environment, (resolved, matches) => {
+    const resolvesToUnknown = (type: ESTree.TSType): boolean => {
+      const typeAliases = environment;
+      if (typeAliases === null) return false;
+      return resolvedTypeMatches(type, typeAliases, (resolved, matches) => {
         if (resolved.type === "TSUnknownKeyword") return true;
         if (resolved.type === "TSParenthesizedType") {
           return matches(resolved.typeAnnotation);
@@ -145,13 +147,15 @@ export const noUnknownReturnsRule = defineRule({
           resolved.type !== "TSTypeReference" ||
           resolved.typeName.type !== "Identifier" ||
           (resolved.typeName.name !== "Promise" &&
-            resolved.typeName.name !== "PromiseLike")
+            resolved.typeName.name !== "PromiseLike") ||
+          hasVisibleTypeBinding(resolved.typeName.name, resolved, typeAliases)
         ) {
           return false;
         }
         const value = resolved.typeArguments?.params[0];
         return value !== undefined && matches(value);
       });
+    };
 
     const checkReturnType = (node: FunctionWithReturnType) => {
       const annotation = node.returnType;

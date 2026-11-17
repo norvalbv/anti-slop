@@ -52,6 +52,14 @@ export default function (key: string): unknown { return registry.get(key); }`,
     function read(key: string): unknown { return registry.get(key); }
   }
 }`,
+    "export interface PromiseLike<T> { value: string } export function load(): PromiseLike<unknown> { return value; }",
+    "export interface Promise<T> { value: string } export function load(): Promise<unknown> { return value; }",
+    "export class Promise<T> { value = '' } export function load(): Promise<unknown> { return value; }",
+    "import type { PromiseLike } from './local'; export function load(): PromiseLike<unknown> { return value; }",
+    "export interface PromiseLike<T> { value: string } export type Loader = () => PromiseLike<unknown>;",
+    "export interface PromiseLike<T> { value: string } type Wrap<T> = T; export function load(): Wrap<PromiseLike<unknown>> { return value; }",
+    "export interface PromiseLike<T> { value: string } type Async<T> = PromiseLike<T>; export function load(): Async<unknown> { return value; }",
+    "function outer() { interface Promise<T> { value: string } function load(): Promise<unknown> { return value; } }",
   ],
   invalid: [
     { code: "function load(): unknown { return input; }", errors: [error] },
@@ -110,6 +118,28 @@ export default function (key: string): unknown { return registry.get(key); }`,
   "read"(key: "count"): unknown;
   "read"(key: string): unknown { return registry.get(key); }
 }`,
+      errors: [error],
+    },
+    { code: "export function load(): PromiseLike<unknown> { return value; }", errors: [error] },
+    {
+      code: "function outer() { interface PromiseLike<T> { value: string } } export function load(): PromiseLike<unknown> { return value; }",
+      errors: [error],
+    },
+    {
+      code: "declare global { interface PromiseLike<T> { extra(): void } } export function load(): PromiseLike<unknown> { return value; }",
+      errors: [error],
+    },
+    { code: "type Async<T> = Promise<T>; export function load(): Async<unknown> { return value; }", errors: [error] },
+    {
+      code: "export interface PromiseLike<T> { value: string } export function load(): Promise<unknown> { return value; }",
+      errors: [error],
+    },
+    {
+      code: "export interface Promise<T> { value: string } export function load(): Promise<string> | unknown { return value; }",
+      errors: [error],
+    },
+    {
+      code: "function load<T>(): Promise<unknown> { return promise; } interface Promise2<Promise> { value: Promise }",
       errors: [error],
     },
   ],
