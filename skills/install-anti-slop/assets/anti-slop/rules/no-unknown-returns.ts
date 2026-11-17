@@ -154,10 +154,17 @@ export const noUnknownReturnsRule = defineRule({
       });
 
     const checkReturnType = (node: FunctionWithReturnType) => {
-      if (isInsideTypeParameterBound(node)) return;
       const annotation = node.returnType;
       if (annotation === null || annotation === undefined) return;
       if (!resolvesToUnknown(annotation.typeAnnotation)) return;
+      if (isInsideTypeParameterBound(node)) return;
+      if (
+        (node.type === "FunctionDeclaration" ||
+          node.type === "FunctionExpression") &&
+        hasPreviousOverload(node)
+      ) {
+        return;
+      }
       context.report({ node: annotation.typeAnnotation, messageId: "unknownReturn" });
     };
 
@@ -169,12 +176,8 @@ export const noUnknownReturnsRule = defineRule({
         );
       },
       ArrowFunctionExpression: checkReturnType,
-      FunctionDeclaration(node) {
-        if (!hasPreviousOverload(node)) checkReturnType(node);
-      },
-      FunctionExpression(node) {
-        if (!hasPreviousOverload(node)) checkReturnType(node);
-      },
+      FunctionDeclaration: checkReturnType,
+      FunctionExpression: checkReturnType,
       TSCallSignatureDeclaration: checkReturnType,
       TSConstructSignatureDeclaration: checkReturnType,
       TSConstructorType: checkReturnType,
