@@ -159,6 +159,25 @@ function isCJSRequire(node: ASTNode): boolean {
 }
 
 /**
+ * Same result as `sourceCode.getNodeByRangeIndex(index)` for an index inside `node`, but descends
+ * from `node` instead of the Program, so earlier sibling statements are not rescanned.
+ */
+function getDeepestNodeContaining(
+  node: ASTNode,
+  index: number,
+  sourceCode: SourceCode,
+): ASTNode {
+  for (const key of sourceCode.visitorKeys[node.type] ?? []) {
+    const value: unknown = node[key as keyof ASTNode]
+    for (const child of Array.isArray(value) ? value : [value]) {
+      if (child && child.range[0] <= index && index < child.range[1])
+        return getDeepestNodeContaining(child, index, sourceCode)
+    }
+  }
+  return node
+}
+
+/**
  * Checks whether the given node is a block-like statement.
  * This checks the last token of the node is the closing brace of a block.
  * @param sourceCode The source code to get tokens.
@@ -189,7 +208,7 @@ function isBlockLikeStatement(
   const lastToken = sourceCode.getLastToken(node, isNotSemicolonToken)
   const belongingNode
     = lastToken && isClosingBraceToken(lastToken)
-      ? sourceCode.getNodeByRangeIndex(lastToken.range[0])
+      ? getDeepestNodeContaining(node, lastToken.range[0], sourceCode)
       : null
 
   return (

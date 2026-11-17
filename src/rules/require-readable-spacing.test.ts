@@ -1,3 +1,5 @@
+import { strict as assert } from "node:assert";
+
 import { RuleTester } from "oxlint/plugins-dev";
 
 import { requireReadableSpacingRule } from "./require-readable-spacing.ts";
@@ -39,8 +41,19 @@ tester.run("anti-slop/require-readable-spacing", requireReadableSpacingRule, {
     "const a = 1; // trailing\nconst b = 2;",
     "/** Heads a group. */\nconst a = 1;\nconst b = 2;",
     "import { a } from 'a';\n\nconst b = a;\nexport const c = b;",
+    // A closing brace that ends an object, class expression, or call argument is not block-like.
+    "function f() {\nconst o = { a: 1 };\nfoo();\n}",
+    "function f() {\nconst C = class {};\nfoo();\n}",
+    "function f() {\nconst o = { m() { a(); } };\nfoo();\n}",
+    "function f() {\nfoo(function () { a(); });\nbar();\n}",
+    "function f() {\nconst t = { a: 1 } satisfies { a: number };\nfoo();\n}",
   ],
   invalid: [
+    { code: "function f() {\nif (a) { b(); }\nc();\n}", output: "function f() {\nif (a) { b(); }\n\nc();\n}", errors: [error] },
+    { code: "function f() {\nif (a) b(); else { c(); }\nd();\n}", output: "function f() {\nif (a) b(); else { c(); }\n\nd();\n}", errors: [error] },
+    { code: "function f() {\nconst g = () => { go(); };\nfoo();\n}", output: "function f() {\nconst g = () => { go(); };\n\nfoo();\n}", errors: [error] },
+    { code: "function f() {\nswitch (x) { case 1: }\nfoo();\n}", output: "function f() {\nswitch (x) { case 1: }\n\nfoo();\n}", errors: [error] },
+    { code: "function f() {\n{ a(); }\nfoo();\n}", output: "function f() {\n{ a(); }\n\nfoo();\n}", errors: [error] },
     { code: "function f() {};\nfunction g() {}", output: "function f() {};\n\nfunction g() {}", errors: [error] },
     { code: "function g() {\n  if (x) {\n    y();\n  };\n  foo();\n}", output: "function g() {\n  if (x) {\n    y();\n  };\n\n  foo();\n}", errors: [error] },
     { code: "function g() {\n  function h() {};\n  foo();\n}", output: "function g() {\n  function h() {};\n\n  foo();\n}", errors: [error] },
@@ -143,3 +156,15 @@ tester.run(
     ],
   },
 );
+
+// Block-like detection must stay linear in the number of sibling statements.
+const flatBlocks = (count: number) => Array.from({ length: count }, () => "if (a) { b(); }").join("\n\n");
+for (const [label, code] of [
+  ["top-level", flatBlocks(8000)],
+  ["function body", `function f() {\n${flatBlocks(8000)}\n}`],
+]) {
+  const start = performance.now();
+  tester.run(`readable spacing scales: ${label}`, requireReadableSpacingRule, { valid: [code], invalid: [] });
+  const elapsed = performance.now() - start;
+  assert.ok(elapsed < 3000, `${label}: 8000 block statements took ${Math.round(elapsed)} ms`);
+}
