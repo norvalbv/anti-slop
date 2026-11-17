@@ -51,10 +51,13 @@ const statementBody = (node: ESTree.Node): Array<ESTree.Node> | null => {
 };
 
 const hasPreviousFunctionOverload = (node: ESTree.Function): boolean => {
-  if (node.type !== "FunctionDeclaration" || node.id === null) return false;
+  if (node.type !== "FunctionDeclaration") return false;
 
   const declaration =
-    node.parent.type === "ExportNamedDeclaration" ? node.parent : node;
+    node.parent.type === "ExportNamedDeclaration" ||
+    node.parent.type === "ExportDefaultDeclaration"
+      ? node.parent
+      : node;
   const siblings = statementBody(declaration.parent);
   if (siblings === null) return false;
 
@@ -64,7 +67,7 @@ const hasPreviousFunctionOverload = (node: ESTree.Function): boolean => {
   const previous = unwrapExport(siblings[index - 1]);
   return (
     previous?.type === "TSDeclareFunction" &&
-    previous.id?.name === node.id.name
+    previous.id?.name === node.id?.name
   );
 };
 

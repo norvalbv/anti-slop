@@ -33,6 +33,10 @@ export function read(key: string): unknown { return registry.get(key); }`,
   read(key: "label"): string;
   read(key: string): unknown { return registry.get(key); }
 }`,
+    `export default function read(key: "count"): number;
+export default function read(key: string): unknown { return registry.get(key); }`,
+    `export default function (key: "count"): number;
+export default function (key: string): unknown { return registry.get(key); }`,
   ],
   invalid: [
     { code: "function load(): unknown { return input; }", errors: [error] },
@@ -74,6 +78,16 @@ export function read(key: string): unknown { return registry.get(key); }`,
   read(key: "count"): unknown;
   read(key: string): unknown { return registry.get(key); }
 }`,
+      errors: [error],
+    },
+    {
+      code: `export default function read(key: "count"): unknown;
+export default function read(key: string): unknown { return registry.get(key); }`,
+      errors: [error],
+    },
+    {
+      code: `export function load(key: "count"): number;
+export default function (key: string): unknown { return registry.get(key); }`,
       errors: [error],
     },
   ],
