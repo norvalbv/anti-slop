@@ -215,26 +215,35 @@ function isNullishType(type: ESTree.TSType): boolean {
 	return type.type === "TSNullKeyword" || type.type === "TSUndefinedKeyword";
 }
 
+type PredicateCheck = {
+	readonly environment: TypeEnvironment;
+	readonly nonNull: boolean;
+	readonly predicate: ESTree.TSType;
+	readonly predicateText: string;
+	readonly resolvedAliases: Map<ESTree.TSTypeAliasDeclaration, boolean>;
+	readonly sourceCode: SourceCode;
+};
+
+/** Deeper alias chains count as narrowable: a missed report, never a false one. */
+const maxPredicateAliasDepth = 64;
+
 /** Whether every value of a declared type already satisfies the guard's predicate type. */
 function typeSatisfiesPredicate(
-	sourceCode: SourceCode,
+	check: PredicateCheck,
 	type: ESTree.TSType,
-	predicate: ESTree.TSType,
-	environment: TypeEnvironment,
-	nonNull: boolean,
-	resolvingAliases = new Set<ESTree.TSTypeAliasDeclaration>(),
+	resolvingAliases: ReadonlySet<ESTree.TSTypeAliasDeclaration>,
 ): boolean {
 	const current = unwrapParenthesizedType(type);
-	if (typeText(sourceCode, current) === typeText(sourceCode, predicate)) return true;
+	if (typeText(check.sourceCode, current) === check.predicateText) return true;
 	if (current.type === "TSUnionType") {
 		return current.types.every(
 			(member) =>
-				(nonNull && isNullishType(member)) ||
-				typeSatisfiesPredicate(sourceCode, member, predicate, environment, nonNull, resolvingAliases),
+				(check.nonNull && isNullishType(member)) ||
+				typeSatisfiesPredicate(check, member, resolvingAliases),
 		);
 	}
 	const literalKeyword = literalTypeKeyword(current);
-	if (literalKeyword !== null) return literalKeyword === unwrapParenthesizedType(predicate).type;
+	if (literalKeyword !== null) return literalKeyword === unwrapParenthesizedType(check.predicate).type;
 	if (
 		current.type !== "TSTypeReference" ||
 		current.typeName.type !== "Identifier" ||
@@ -242,17 +251,25 @@ function typeSatisfiesPredicate(
 	) {
 		return false;
 	}
-	const alias = visibleTypeAlias(current.typeName.name, current, environment.typeAliases);
-	if (alias === null || alias.typeParameters || resolvingAliases.has(alias)) return false;
-	resolvingAliases.add(alias);
-	return typeSatisfiesPredicate(
-		sourceCode,
-		alias.typeAnnotation,
-		predicate,
-		environment,
-		nonNull,
-		resolvingAliases,
-	);
+	const alias = visibleTypeAlias(current.typeName.name, current, check.environment.typeAliases);
+	if (
+		alias === null ||
+		alias.typeParameters ||
+		resolvingAliases.has(alias) ||
+		resolvingAliases.size >= maxPredicateAliasDepth
+	) {
+		return false;
+	}
+	let satisfies = check.resolvedAliases.get(alias);
+	if (satisfies === undefined) {
+		satisfies = typeSatisfiesPredicate(
+			check,
+			alias.typeAnnotation,
+			new Set(resolvingAliases).add(alias),
+		);
+		check.resolvedAliases.set(alias, satisfies);
+	}
+	return satisfies;
 }
 
 function declaredTypeMatchesPredicate(
@@ -262,11 +279,16 @@ function declaredTypeMatchesPredicate(
 	environment: TypeEnvironment,
 	nonNull: boolean,
 ): boolean {
-	return (
-		predicate !== null &&
-		hasInformativeType(type, environment) &&
-		typeSatisfiesPredicate(sourceCode, type, predicate, environment, nonNull)
-	);
+	if (predicate === null) return false;
+	const check: PredicateCheck = {
+		environment,
+		nonNull,
+		predicate,
+		predicateText: typeText(sourceCode, predicate),
+		resolvedAliases: new Map(),
+		sourceCode,
+	};
+	return typeSatisfiesPredicate(check, type, new Set()) && hasInformativeType(type, environment);
 }
 
 function isOptionalParameterAnnotation(annotation: ESTree.TSTypeAnnotation): boolean {

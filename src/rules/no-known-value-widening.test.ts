@@ -7,6 +7,12 @@ const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" }
 const error = { messageId: "widening" };
 
 const prelude = "type Command = () => void; const startCommand = () => {};";
+const isStringGuard = "function isString(value: unknown): value is string { return typeof value === 'string'; }";
+
+function aliasChain(depth: number): string {
+	const links = Array.from({ length: depth }, (_, i) => `type A${i + 1} = (A${i}) | 'q${i + 1}';`);
+	return ["type A0 = 'q0';", ...links].join(" ");
+}
 
 tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 	valid: [
@@ -85,6 +91,9 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		// Sized to take minutes if every call rescans all references to its callee.
 		`function helper(value: number): number { return value; } ${"helper(0);".repeat(30000)}`,
 		`function isString(value: unknown): value is string { return typeof value === "string"; } declare const input: unknown; ${"isString(input);".repeat(30000)}`,
+		// A union DAG of aliases 40 deep: exponential without a per-alias memo.
+		`${isStringGuard} type T0 = 1; ${Array.from({ length: 40 }, (_, i) => `type T${i + 1} = T${i} | T${i};`).join(" ")} function f(input: T40) { return isString(input); }`,
+		`${isStringGuard} ${aliasChain(2000)} function f(input: A2000) { return isString(input); }`,
 	],
 	invalid: [
 		{ code: `${prelude} const holder = class Record {}; const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
@@ -253,6 +262,11 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		{ code: "const a = { x: 1 } satisfies Record<string, number>; const b: Record<string, number> = a;", errors: [error] },
 		{ code: "const a = { x: 1 } as const; const b: Record<string, number> = a;", errors: [error] },
 		{ code: "const a = { x: 1 } as Record<string, number>; const b: Record<string, number> = a;", errors: [error] },
+		{ code: `${isStringGuard} type Id = "a" | "b"; function f(input: Id | Id) { return isString(input); }`, errors: [error] },
+		{ code: `${isStringGuard} type Name = "x"; type Other = Name | "y"; function f(input: Name | Other) { return isString(input); }`, errors: [error] },
+		{ code: `${isStringGuard} type Id = string; type A = Id; type B = Id; function f(input: A | B) { return isString(input); }`, errors: [error] },
+		{ code: `${isStringGuard} ${aliasChain(20)} function f(input: A20) { return isString(input); }`, errors: [error] },
+		{ code: `${isStringGuard} ${aliasChain(2000)} function f(input: A2000) { return isString(input); } const bad: unknown = {};`, errors: [error] },
 		{ code: `${prelude} interface Commands { readonly start: Command } const source: Commands = { start: startCommand }; const commands: Record<string, Command> = source;`, errors: [error] },
 		{ code: "type Item = { id: number }; let check = (value: unknown): value is Item => true; check({ id: 1 });", errors: [error] },
 		{ code: "type Item = { id: number }; const check = (value: unknown): value is Item => true; check({ id: 1 });", errors: [error] },
