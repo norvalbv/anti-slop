@@ -62,19 +62,27 @@ const NON_ARRAY_EXPRESSIONS = new Set([
   "ObjectExpression", "ClassExpression", "FunctionExpression", "ArrowFunctionExpression", "Literal", "TemplateLiteral",
 ]);
 
+/** Top-level verdicts only: each scans every reference, and a reducer callback asks once per member call. */
+const nonArrayBindings = new WeakMap<Variable, boolean>();
+
 /** Object literals, classes, functions and primitives, directly or via unreassigned bindings; `new` stays unknown since Array subclasses exist. */
 function isKnownNonArrayReceiver(sourceCode: SourceCode, node: ESTree.Node, visited = new Set<Variable>()): boolean {
   node = unwrapArrayExpression(node);
   if (NON_ARRAY_EXPRESSIONS.has(node.type)) return true;
   const variable = resolveArrayBinding(sourceCode, node);
   if (variable === null || visited.has(variable) || variable.defs.length === 0) return false;
+  const cached = nonArrayBindings.get(variable);
+  if (cached !== undefined) return cached;
+  const topLevel = visited.size === 0;
   visited.add(variable);
-  if (variable.references.some(reference => reference.isWrite() && !reference.init)) return false;
-  return variable.defs.every(definition => {
-    if (definition.type === "ClassName" || definition.type === "FunctionName") return true;
-    const init = constInitializer(definition);
-    return init !== null && isKnownNonArrayReceiver(sourceCode, init, visited);
-  });
+  const verdict = !variable.references.some(reference => reference.isWrite() && !reference.init) &&
+    variable.defs.every(definition => {
+      if (definition.type === "ClassName" || definition.type === "FunctionName") return true;
+      const init = constInitializer(definition);
+      return init !== null && isKnownNonArrayReceiver(sourceCode, init, visited);
+    });
+  if (topLevel) nonArrayBindings.set(variable, verdict);
+  return verdict;
 }
 
 function isGlobalCopyOwner(sourceCode: SourceCode, node: ESTree.Node, name: string): boolean {
