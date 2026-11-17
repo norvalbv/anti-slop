@@ -6,6 +6,7 @@ import {
 	createTypeEnvironment,
 	isKnownEvidenceExpression,
 	type TypeEnvironment,
+	type Undecided,
 	type WideningTarget,
 } from "../shared/dictionary-types.ts";
 import {
@@ -73,7 +74,7 @@ function hasKnownEvidence(
 	) {
 		return false;
 	}
-	// A broad annotation on the source is reported (or exempted) at its own declaration.
+	// A broad or undecided annotation on the source is judged at its own declaration.
 	if (annotationTarget(variableTypeAnnotation(sourceCode, variable), environment) !== null) {
 		return false;
 	}
@@ -144,6 +145,7 @@ function hasInformativeType(
 	type: ESTree.TSType,
 	environment: TypeEnvironment,
 ): boolean {
+	// An undecided type is not known to be informative.
 	return classifyUnsafeDictionaryValue(type, environment) === null;
 }
 
@@ -343,7 +345,7 @@ function typePredicateSubjectIndex(
 function annotationTarget(
 	annotation: ESTree.TSTypeAnnotation | null | undefined,
 	environment: TypeEnvironment,
-): WideningTarget | null {
+): WideningTarget | Undecided | null {
 	return annotation === null || annotation === undefined
 		? null
 		: classifyWideningTarget(annotation.typeAnnotation, environment);
@@ -411,10 +413,10 @@ export const noKnownValueWideningRule = defineRule({
 
 		const reportFlow = (
 			expression: ESTree.Expression,
-			destination: WideningTarget | null,
+			destination: WideningTarget | Undecided | null,
 			subject: string,
 		) => {
-			if (destination === null || environment === null) return;
+			if (destination === null || destination === "undecided" || environment === null) return;
 			if (
 				isDictionaryAccumulatorTarget(destination) &&
 				isEmptyObjectExpression(expression)

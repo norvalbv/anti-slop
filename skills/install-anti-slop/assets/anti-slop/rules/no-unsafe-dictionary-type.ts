@@ -149,7 +149,7 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 					node.typeAnnotation.typeAnnotation,
 					environment,
 				);
-				if (unsafe !== null) report(node, unsafe.unsafeValue);
+				if (unsafe !== null && unsafe !== "undecided") report(node, unsafe.unsafeValue);
 			},
 		};
 	},

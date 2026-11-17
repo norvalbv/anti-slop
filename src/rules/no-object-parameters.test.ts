@@ -5,6 +5,13 @@ import { noObjectParametersRule } from "./no-object-parameters.ts";
 const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const error = { messageId: "objectParameter" };
 
+// Each level doubles the work of a resolver that re-expands a repeated argument.
+const nested = (wrapper: string, depth: number, inner: string): string =>
+	Array.from({ length: depth }).reduce<string>((type) => `${wrapper}<${type}>`, inner);
+// `A{k}<T>` instantiates `A0` 2^k times, so only an expansion budget bounds it.
+const selfComposed = (depth: number): string =>
+	Array.from({ length: depth }, (_, k) => `type A${k + 1}<T> = A${k}<A${k}<T>>;`).join(" ");
+
 tester.run("anti-slop/no-object-parameters", noObjectParametersRule, {
 	valid: [
 		"type T = User; type Body = T; type Outer<T> = Body; function save(value: Outer<object>) {}",
@@ -23,8 +30,15 @@ tester.run("anti-slop/no-object-parameters", noObjectParametersRule, {
 		"type Payload = object; function outer() { type Payload = { readonly id: string }; function consume(value: Payload) {} }",
 		"type Identity<T> = T; function consume<Identity>(value: Identity) {}",
 		"function one() { type Payload = object; } function two() { function consume(value: Payload) {} }",
+		`type Two<T> = T | T; function consume(value: ${nested("Two", 30, "string")}) {}`,
+		`type A0<T> = T | T; ${selfComposed(30)} function consume(value: A30<string>) {}`,
 	],
 	invalid: [
+		{
+			code: `type Two<T> = T | T; type Id<T> = T; function consume(value: ${nested("Two", 30, "string")} | Id<object>) {}`,
+			errors: [error],
+		},
+		{ code: "type Id<T> = T; function consume(value: Id<Id<object>>) {}", errors: [error] },
 		{ code: "function f(value: object) {}", errors: [error] },
 		{ code: "type Alias = object; function f(value: Alias) {}", errors: [error] },
 		{ code: "type Alias = (object); function f(value: Alias) {}", errors: [error] },

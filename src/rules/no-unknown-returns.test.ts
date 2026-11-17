@@ -5,6 +5,13 @@ import { noUnknownReturnsRule } from "./no-unknown-returns.ts";
 const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const error = { messageId: "unknownReturn" };
 
+// Each level doubles the work of a resolver that re-expands a repeated argument.
+const nested = (wrapper: string, depth: number, inner: string): string =>
+  Array.from({ length: depth }).reduce<string>((type) => `${wrapper}<${type}>`, inner);
+// `A{k}<T>` instantiates `A0` 2^k times, so only an expansion budget bounds it.
+const selfComposed = (depth: number): string =>
+  Array.from({ length: depth }, (_, k) => `type A${k + 1}<T> = A${k}<A${k}<T>>;`).join(" ");
+
 tester.run("anti-slop/no-unknown-returns", noUnknownReturnsRule, {
   valid: [
     "type ImportedValue = unknown;",
@@ -60,8 +67,19 @@ export default function (key: string): unknown { return registry.get(key); }`,
     "export interface PromiseLike<T> { value: string } type Wrap<T> = T; export function load(): Wrap<PromiseLike<unknown>> { return value; }",
     "export interface PromiseLike<T> { value: string } type Async<T> = PromiseLike<T>; export function load(): Async<unknown> { return value; }",
     "function outer() { interface Promise<T> { value: string } function load(): Promise<unknown> { return value; } }",
+    `type Two<T> = T | T; function load(): ${nested("Two", 30, "string")} { return value; }`,
+    `type A0<T> = T | T; ${selfComposed(30)} function load(): A30<string> { return value; }`,
   ],
   invalid: [
+    {
+      code: `type Two<T> = T | T; type Id<T> = T; function load(): ${nested("Two", 30, "string")} | Id<unknown> { return value; }`,
+      errors: [error],
+    },
+    { code: "type Maybe<T> = T | null; function load(): Maybe<Maybe<unknown>> { return input; }", errors: [error] },
+    {
+      code: "type T = unknown; type Body = T; type Outer<T> = Body; function load(): Outer<User> { return user; }",
+      errors: [error],
+    },
     { code: "function load(): unknown { return input; }", errors: [error] },
     { code: "const load = (): unknown => input;", errors: [error] },
     { code: "type Loader = () => unknown;", errors: [error] },
