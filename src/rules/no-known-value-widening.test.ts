@@ -48,6 +48,10 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		`${prelude} type Second<T, U> = U; type Outer<T, U> = Record<Second<U, T>, Command>; const commands: Outer<"start", string> = { start: startCommand };`,
 		`${prelude} type Key<T> = T; function build<T extends string>(extra: Record<T, Command>) { const all: Record<Key<T | "start">, Command> = { ...extra, start: startCommand }; return all; }`,
 		'type Field<K extends string> = K; type Form<K extends string> = Record<Field<K | "id">, string>; const form: Form<"name"> = { id: "1", name: "x" };',
+		"function isString(value: unknown): value is string { return typeof value === 'string'; } export function describe(value: string | number): string { return isString(value) ? value : String(value + 1); }",
+		"function isString(value: unknown): value is string { return true; } type StringOrNumber = string | number; function check(value: StringOrNumber): boolean { return isString(value); }",
+		"function isString(value: unknown): value is string { return true; } function check(value: unknown): boolean { return isString(value as string | number); }",
+		"function isString(value: unknown): value is string { return true; } declare function getValue(): string | number; function check(): boolean { return isString(getValue()); }",
 	],
 	invalid: [
 		{ code: `${prelude} const holder = class Record {}; const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
