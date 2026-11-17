@@ -14,7 +14,7 @@ import {
 	functionParameterTypeAnnotation,
 } from "../shared/function-parameters.ts";
 import { resolveVariable } from "../shared/scope.ts";
-import { visibleTypeAlias } from "../shared/type-alias-resolution.ts";
+import { hasSameTypeBindings, visibleTypeAlias } from "../shared/type-alias-resolution.ts";
 
 import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 
@@ -234,7 +234,12 @@ function typeSatisfiesPredicate(
 	resolvingAliases: ReadonlySet<ESTree.TSTypeAliasDeclaration>,
 ): boolean {
 	const current = unwrapParenthesizedType(type);
-	if (typeText(check.sourceCode, current) === check.predicateText) return true;
+	if (
+		typeText(check.sourceCode, current) === check.predicateText &&
+		hasSameTypeBindings(current, check.predicate, check.environment.typeAliases)
+	) {
+		return true;
+	}
 	if (current.type === "TSUnionType") {
 		return current.types.every(
 			(member) =>
