@@ -69,7 +69,10 @@ function isArrayFactoryCall(
   const owner = unwrapArrayExpression(method.object);
   if (owner.type !== "Identifier" || ARRAY_FACTORIES.get(owner.name)?.includes(method.name) !== true) return false;
   const binding = resolveArrayBinding(sourceCode, owner);
-  return binding === null || binding.defs.length === 0;
+  // Type-only declarations (global augmentations, type aliases) do not shadow the runtime value.
+  return binding === null || binding.defs.every(definition =>
+    definition.node.type === "TSInterfaceDeclaration" || definition.node.type === "TSTypeAliasDeclaration",
+  );
 }
 
 /** `value.split(",")` or `value.split(/,/)`: a literal separator is `String#split`, which returns an array. A `super` receiver is a class method, not a string. */

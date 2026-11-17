@@ -24,6 +24,7 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     "const first = second; const second = first; first.filter(active).map(email);",
     "const Array = custom; Array.from(users).filter(active).map(email);",
     "function collect(Object) { return Object.keys(users).filter(active).map(email); }",
+    "class Array {} Array.from(users).filter(active).map(email);",
     "function collect(value, separator) { return value.split(separator).filter(Boolean).map(email); }",
     "function collect(value) { return value.split(1).filter(Boolean).map(email); }",
     "class Path extends Base { parts() { return super.split('/').filter(Boolean).map(email); } }",
@@ -55,6 +56,8 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     { code: "const users = []; users.flat().filter(active).map(email);", errors: [error] },
     { code: "const users = []; users.sort().reverse().filter(active).map(email);", errors: [error] },
     { code: "Array.from(users).filter(active).map(email);", languageOptions: { globals: { Array: "readonly" } }, errors: [error] },
+    { code: "type Object = Record<string, unknown>; Object.keys(users).filter(active).map(email);", errors: [error] },
+    { code: "interface Array<T> { first(): T } Array.from(users).filter(active).map(email);", errors: [error] },
     { code: "Object.keys(users).map(email).filter(Boolean);", languageOptions: { globals: { Object: "readonly" } }, errors: [error] },
   ],
 });
