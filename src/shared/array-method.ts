@@ -72,11 +72,11 @@ function isArrayFactoryCall(
   return binding === null || binding.defs.length === 0;
 }
 
-/** `value.split(",")` or `value.split(/,/)`: a literal separator is `String#split`, which returns an array. */
-function isLiteralSplitCall(node: ESTree.CallExpression, methodName: string): boolean {
+/** `value.split(",")` or `value.split(/,/)`: a literal separator is `String#split`, which returns an array. A `super` receiver is a class method, not a string. */
+function isLiteralSplitCall(node: ESTree.CallExpression, method: { readonly name: string; readonly object: ESTree.Node }): boolean {
   const [separator] = node.arguments;
   return (
-    methodName === "split" &&
+    method.name === "split" && method.object.type !== "Super" &&
     separator?.type === "Literal" &&
     (typeof separator.value === "string" || "regex" in separator)
   );
@@ -93,7 +93,7 @@ export function isKnownArrayExpression(
   if (node.type === "CallExpression") {
     const method = arrayMethodTarget(node.callee);
     if (method === null) return false;
-    if (isLiteralSplitCall(node, method.name) || isArrayFactoryCall(sourceCode, method)) return true;
+    if (isLiteralSplitCall(node, method) || isArrayFactoryCall(sourceCode, method)) return true;
     return (
       ["map", "filter", "flatMap", "flat", "slice", "concat", "sort", "reverse", "toSorted", "toReversed", "toSpliced"].includes(method.name) &&
       isKnownArrayExpression(sourceCode, method.object, visited)

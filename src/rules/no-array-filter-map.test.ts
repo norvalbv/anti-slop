@@ -25,6 +25,8 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     "const Array = custom; Array.from(users).filter(active).map(email);",
     "function collect(Object) { return Object.keys(users).filter(active).map(email); }",
     "function collect(value, separator) { return value.split(separator).filter(Boolean).map(email); }",
+    "function collect(value) { return value.split(1).filter(Boolean).map(email); }",
+    "class Path extends Base { parts() { return super.split('/').filter(Boolean).map(email); } }",
     "Object.groupBy(users, team).filter(active).map(email);",
     "constructor.from(users).filter(active).map(email);",
     "toString.keys(users).filter(active).map(email);",
