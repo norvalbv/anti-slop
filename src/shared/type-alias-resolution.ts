@@ -254,52 +254,105 @@ function aliasSubstitutions(
 	return next;
 }
 
-/** Match a type after resolving visible aliases and substituting their type parameters. */
+/** Alias expansions one resolution may perform before it leaves further aliases unexpanded. */
+const EXPANSION_BUDGET = 1_000;
+
+/** Alias expansions left to one resolution, shared by every branch it walks. */
+export type ExpansionBudget = { remaining: number };
+
+export function createExpansionBudget(): ExpansionBudget {
+	return { remaining: EXPANSION_BUDGET };
+}
+
+/** Count one alias expansion; false once the budget is spent, so the alias stays unexpanded. */
+export function spendExpansion(budget: ExpansionBudget): boolean {
+	budget.remaining -= 1;
+	return budget.remaining >= 0;
+}
+
+/** Whether a resolution left some alias unexpanded, so a negative answer is only partial. */
+export function isExpansionBudgetSpent(budget: ExpansionBudget): boolean {
+	return budget.remaining < 0;
+}
+
+type Resolution = {
+	readonly budget: ExpansionBudget;
+	readonly environment: TypeAliasEnvironment;
+	readonly matcher: ResolvedTypeMatcher;
+	/** A resumed argument's result depends only on its substitution, so each resolves once. */
+	readonly resumed: Map<Substitution, boolean>;
+};
+
+function evaluateResolved(
+	resolution: Resolution,
+	current: ESTree.TSType,
+	substitutions: Substitutions,
+	resolvingAliases: ResolvingAliases,
+): boolean {
+	if (current.type === "TSTypeReference") {
+		const name = typeReferenceName(current);
+		if (name !== null) {
+			const substitution = substitutions.get(name);
+			if (substitution !== undefined && !current.typeArguments?.params.length) {
+				// Resume in the argument's own context so a separate, finite instantiation of an
+				// alias that is still being expanded (`Maybe<Maybe<unknown>>`) is not mistaken for
+				// recursion.
+				const cached = resolution.resumed.get(substitution);
+				if (cached !== undefined) return cached;
+				const result = evaluateResolved(
+					resolution,
+					substitution.type,
+					substitution.substitutions,
+					substitution.resolvingAliases,
+				);
+				resolution.resumed.set(substitution, result);
+				return result;
+			}
+			const alias = visibleTypeAlias(name, current, resolution.environment);
+			if (
+				alias !== null &&
+				!resolvingAliases.has(alias) &&
+				spendExpansion(resolution.budget)
+			) {
+				const nextResolving = new Set(resolvingAliases);
+				nextResolving.add(alias);
+				const nextSubstitutions = aliasSubstitutions(
+					alias,
+					current,
+					substitutions,
+					resolvingAliases,
+					nextResolving,
+				);
+				if (nextSubstitutions !== null) {
+					return evaluateResolved(
+						resolution,
+						alias.typeAnnotation,
+						nextSubstitutions,
+						nextResolving,
+					);
+				}
+			}
+		}
+	}
+	return resolution.matcher(current, (child) =>
+		evaluateResolved(resolution, child, substitutions, resolvingAliases),
+	);
+}
+
+/**
+ * Match a type after resolving visible aliases and substituting their type parameters.
+ * Past the expansion budget an alias stays unexpanded, as a recursive one does, so a matcher
+ * that answers true only for a finding loses findings there but never gains one.
+ */
 export function resolvedTypeMatches(
 	type: ESTree.TSType,
 	environment: TypeAliasEnvironment,
 	matcher: ResolvedTypeMatcher,
 ): boolean {
-	const evaluate = (
-		current: ESTree.TSType,
-		substitutions: Substitutions,
-		resolvingAliases: ResolvingAliases,
-	): boolean => {
-		if (current.type === "TSTypeReference") {
-			const name = typeReferenceName(current);
-			if (name !== null) {
-				const substitution = substitutions.get(name);
-				if (substitution !== undefined && !current.typeArguments?.params.length) {
-					// Resume in the argument's own context so a separate, finite instantiation of an
-					// alias that is still being expanded (`Maybe<Maybe<unknown>>`) is not mistaken for
-					// recursion.
-					return evaluate(
-						substitution.type,
-						substitution.substitutions,
-						substitution.resolvingAliases,
-					);
-				}
-				const alias = visibleTypeAlias(name, current, environment);
-				if (alias !== null && !resolvingAliases.has(alias)) {
-					const nextResolving = new Set(resolvingAliases);
-					nextResolving.add(alias);
-					const nextSubstitutions = aliasSubstitutions(
-						alias,
-						current,
-						substitutions,
-						resolvingAliases,
-						nextResolving,
-					);
-					if (nextSubstitutions !== null) {
-						return evaluate(alias.typeAnnotation, nextSubstitutions, nextResolving);
-					}
-				}
-			}
-		}
-		return matcher(current, (child) =>
-			evaluate(child, substitutions, resolvingAliases),
-		);
-	};
-
-	return evaluate(type, new Map(), new Set());
+	return evaluateResolved(
+		{ budget: createExpansionBudget(), environment, matcher, resumed: new Map() },
+		type,
+		new Map(),
+		new Set(),
+	);
 }
