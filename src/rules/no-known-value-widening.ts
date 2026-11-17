@@ -42,8 +42,15 @@ function variableDeclarator(variable: Variable): ESTree.VariableDeclarator | nul
 		: null;
 }
 
+const onlyInitializingWrites = new WeakMap<Variable, boolean>();
+
 function hasOnlyInitializingWrites(variable: Variable): boolean {
-	return variable.references.every((reference) => reference.init || !reference.isWrite());
+	let result = onlyInitializingWrites.get(variable);
+	if (result === undefined) {
+		result = variable.references.every((reference) => reference.init || !reference.isWrite());
+		onlyInitializingWrites.set(variable, result);
+	}
+	return result;
 }
 
 function isStableConstVariable(variable: Variable, declarator: ESTree.VariableDeclarator): boolean {
@@ -113,17 +120,8 @@ function isFunctionExpression(node: ESTree.Node): node is FunctionExpression {
 	);
 }
 
-function localFunctionForCall(
-	sourceCode: SourceCode,
-	callee: ESTree.Expression,
-): FunctionExpression | null {
-	const unwrapped = unwrapExpression(callee);
-	if (isFunctionExpression(unwrapped)) return unwrapped;
-	if (unwrapped.type !== "Identifier") return null;
-	const variable = resolveVariable(sourceCode, unwrapped);
-	if (variable === null || variable.defs.length !== 1 || !hasOnlyInitializingWrites(variable)) {
-		return null;
-	}
+function definedFunction(variable: Variable): FunctionExpression | null {
+	if (variable.defs.length !== 1) return null;
 	const [definition] = variable.defs;
 	if (definition === undefined) return null;
 	if (definition.type === "FunctionName" && isFunctionExpression(definition.node)) {
@@ -136,6 +134,25 @@ function localFunctionForCall(
 	if (initializer === null) return null;
 	const unwrappedInitializer = unwrapExpression(initializer);
 	return isFunctionExpression(unwrappedInitializer) ? unwrappedInitializer : null;
+}
+
+/** The local function a call runs, if `accepts` it; the reassignment scan runs only after that check. */
+function localFunctionForCall(
+	sourceCode: SourceCode,
+	callee: ESTree.Expression,
+	accepts: (owner: FunctionExpression) => boolean,
+): FunctionExpression | null {
+	const unwrapped = unwrapExpression(callee);
+	if (isFunctionExpression(unwrapped)) return accepts(unwrapped) ? unwrapped : null;
+	if (unwrapped.type !== "Identifier") return null;
+	const variable = resolveVariable(sourceCode, unwrapped);
+	if (variable === null) return null;
+	const owner = definedFunction(variable);
+	return owner !== null && accepts(owner) && hasOnlyInitializingWrites(variable) ? owner : null;
+}
+
+function hasReturnType(owner: FunctionExpression): boolean {
+	return owner.returnType !== undefined && owner.returnType !== null;
 }
 
 function variableTypeAnnotation(
@@ -296,7 +313,8 @@ function isRedundantGuardArgument(
 		);
 	}
 	if (expression.type === "CallExpression") {
-		const returnType = localFunctionForCall(sourceCode, expression.callee)?.returnType?.typeAnnotation;
+		const returnType = localFunctionForCall(sourceCode, expression.callee, hasReturnType)?.returnType
+			?.typeAnnotation;
 		return (
 			returnType !== undefined &&
 			declaredTypeMatchesPredicate(sourceCode, returnType, predicate, environment, nonNull)
@@ -344,6 +362,10 @@ function guardPredicateType(owner: FunctionExpression): ESTree.TSType | null {
 		return null;
 	}
 	return predicate.typeAnnotation?.typeAnnotation ?? null;
+}
+
+function isTypePredicateFunction(owner: FunctionExpression): boolean {
+	return owner.returnType?.typeAnnotation.type === "TSTypePredicate";
 }
 
 function typePredicateSubjectIndex(
@@ -499,7 +521,7 @@ export const noKnownValueWideningRule = defineRule({
 			},
 			CallExpression(node) {
 				if (environment === null) return;
-				const owner = localFunctionForCall(context.sourceCode, node.callee);
+				const owner = localFunctionForCall(context.sourceCode, node.callee, isTypePredicateFunction);
 				if (owner === null) return;
 				const parameterIndex = typePredicateSubjectIndex(context.sourceCode, owner);
 				if (parameterIndex === null) return;

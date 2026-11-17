@@ -82,6 +82,9 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"const a = {} as Record<string, unknown>; const b: Record<string, unknown> = a;",
 		"const a = <Record<string, number>>{}; function f(): Record<string, number> { return a; }",
 		"const a = ({} as Record<string, number>)!; const b: Record<string, number> = a;",
+		// Sized to take minutes if every call rescans all references to its callee.
+		`function helper(value: number): number { return value; } ${"helper(0);".repeat(30000)}`,
+		`function isString(value: unknown): value is string { return typeof value === "string"; } declare const input: unknown; ${"isString(input);".repeat(30000)}`,
 	],
 	invalid: [
 		{ code: `${prelude} const holder = class Record {}; const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
