@@ -7,6 +7,8 @@ type TypeScope = ESTree.Node;
 
 type TypeBinding = {
 	readonly alias: ESTree.TSTypeAliasDeclaration | null;
+	/** False for a value or namespace import, whose type meaning syntax cannot show. */
+	readonly declaresType: boolean;
 	readonly name: string;
 	readonly scope: TypeScope;
 };
@@ -66,12 +68,21 @@ function enclosingTypeScope(node: ESTree.Node): TypeScope {
 	return node;
 }
 
-function declaredTypeBinding(node: ESTree.Node): {
-	readonly alias: ESTree.TSTypeAliasDeclaration | null;
-	readonly name: string;
-} | null {
+function isTypeOnlyImport(
+	node: ESTree.ImportSpecifier | ESTree.ImportDefaultSpecifier,
+): boolean {
+	return (
+		(node.type === "ImportSpecifier" && node.importKind === "type") ||
+		(node.parent.type === "ImportDeclaration" &&
+			node.parent.importKind === "type")
+	);
+}
+
+function declaredTypeBinding(
+	node: ESTree.Node,
+): Omit<TypeBinding, "scope"> | null {
 	if (node.type === "TSTypeAliasDeclaration") {
-		return { alias: node, name: node.id.name };
+		return { alias: node, declaresType: true, name: node.id.name };
 	}
 	if (
 		node.type === "TSInterfaceDeclaration" ||
@@ -79,14 +90,22 @@ function declaredTypeBinding(node: ESTree.Node): {
 		node.type === "ClassDeclaration" ||
 		node.type === "ClassExpression"
 	) {
-		return node.id === null ? null : { alias: null, name: node.id.name };
+		return node.id === null
+			? null
+			: { alias: null, declaresType: true, name: node.id.name };
+	}
+	if (node.type === "ImportNamespaceSpecifier") {
+		return { alias: null, declaresType: false, name: node.local.name };
 	}
 	if (
 		node.type === "ImportSpecifier" ||
-		node.type === "ImportDefaultSpecifier" ||
-		node.type === "ImportNamespaceSpecifier"
+		node.type === "ImportDefaultSpecifier"
 	) {
-		return { alias: null, name: node.local.name };
+		return {
+			alias: null,
+			declaresType: isTypeOnlyImport(node),
+			name: node.local.name,
+		};
 	}
 	return null;
 }
@@ -189,6 +208,20 @@ export function hasVisibleTypeBinding(
 	return (
 		lexicalTypeParameterNames(use, environment.visitorKeys).has(name) ||
 		nearestTypeBindings(name, use, environment).length > 0
+	);
+}
+
+/** Return whether a declaration that definitely names a type shadows a built-in here. */
+export function hasVisibleTypeDeclaration(
+	name: string,
+	use: ESTree.Node,
+	environment: TypeAliasEnvironment,
+): boolean {
+	return (
+		lexicalTypeParameterNames(use, environment.visitorKeys).has(name) ||
+		nearestTypeBindings(name, use, environment).some(
+			(binding) => binding.declaresType,
+		)
 	);
 }
 
