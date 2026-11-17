@@ -7,11 +7,21 @@ function containsForbiddenSymbolName(name: string): boolean {
   return name.toLowerCase().includes(FORBIDDEN_SYMBOL_NAME);
 }
 
-/** Return whether an identifier names a statically accessed member owned by another value. */
+/** Return whether a qualified name is part of a dotted namespace declaration such as `namespace A.B {}`. */
+function isNamespaceDeclarationName(name: ESTree.Node): boolean {
+  let outermost = name;
+  while (outermost.parent?.type === "TSQualifiedName") outermost = outermost.parent;
+  return outermost.parent?.type === "TSModuleDeclaration";
+}
+
+/** Return whether an identifier names a statically accessed member owned by another value or namespace. */
 function isBorrowedMemberName(node: ESTree.Node): boolean {
   const parent = node.parent;
-  if (parent === null || parent.type !== "MemberExpression") return false;
-  return parent.property === node && parent.computed === false;
+  if (parent === null) return false;
+  if (parent.type === "MemberExpression") return parent.property === node && parent.computed === false;
+  if (parent.type === "TSQualifiedName") return parent.right === node && !isNamespaceDeclarationName(parent);
+  if (parent.type === "TSImportType") return parent.qualifier === node;
+  return parent.type === "JSXMemberExpression" && parent.property === node;
 }
 
 /** Ban the case-insensitive substring "shape" in every JavaScript and TypeScript symbol name. */
