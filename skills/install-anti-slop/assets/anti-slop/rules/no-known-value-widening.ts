@@ -136,70 +136,154 @@ function hasInformativeType(
 	return classifyUnsafeDictionaryValue(type, environment) === null;
 }
 
-function isUnionType(
-	type: ESTree.TSType,
-	environment: TypeEnvironment,
-	resolvingAliases = new Set<string>(),
-): boolean {
+function unwrapParenthesizedType(type: ESTree.TSType): ESTree.TSType {
 	let current = type;
-	while (
-		current.type === "TSParenthesizedType" ||
-		(current.type === "TSTypeOperator" && current.operator === "readonly")
-	) {
-		current = current.typeAnnotation;
-	}
-	if (current.type === "TSUnionType") return true;
-	if (current.type === "TSTypeReference" && current.typeName.type === "Identifier") {
-		const name = current.typeName.name;
-		if (resolvingAliases.has(name)) return false;
-		const alias = visibleTypeAlias(name, current, environment.typeAliases);
-		if (alias !== null) {
-			resolvingAliases.add(name);
-			return isUnionType(alias.typeAnnotation, environment, resolvingAliases);
-		}
-	}
-	return false;
+	while (current.type === "TSParenthesizedType") current = current.typeAnnotation;
+	return current;
 }
 
-function hasKnownCallArgumentEvidence(
+function typeText(sourceCode: SourceCode, type: ESTree.TSType): string {
+	return sourceCode.getText(unwrapParenthesizedType(type)).replace(/\s+/g, "");
+}
+
+const literalTypeKeywords: Partial<Record<string, ESTree.TSType["type"]>> = {
+	bigint: "TSBigIntKeyword",
+	boolean: "TSBooleanKeyword",
+	number: "TSNumberKeyword",
+	string: "TSStringKeyword",
+};
+
+function literalTypeKeyword(type: ESTree.TSType): ESTree.TSType["type"] | null {
+	if (type.type === "TSTemplateLiteralType") return "TSStringKeyword";
+	if (type.type !== "TSLiteralType") return null;
+	const literal = type.literal.type === "UnaryExpression" ? type.literal.argument : type.literal;
+	if (literal.type === "TemplateLiteral") return "TSStringKeyword";
+	return literal.type === "Literal" ? (literalTypeKeywords[typeof literal.value] ?? null) : null;
+}
+
+function isNullishType(type: ESTree.TSType): boolean {
+	return type.type === "TSNullKeyword" || type.type === "TSUndefinedKeyword";
+}
+
+/** Whether every value of a declared type already satisfies the guard's predicate type. */
+function typeSatisfiesPredicate(
+	sourceCode: SourceCode,
+	type: ESTree.TSType,
+	predicate: ESTree.TSType,
+	environment: TypeEnvironment,
+	nonNull: boolean,
+	resolvingAliases = new Set<ESTree.TSTypeAliasDeclaration>(),
+): boolean {
+	const current = unwrapParenthesizedType(type);
+	if (typeText(sourceCode, current) === typeText(sourceCode, predicate)) return true;
+	if (current.type === "TSUnionType") {
+		return current.types.every(
+			(member) =>
+				(nonNull && isNullishType(member)) ||
+				typeSatisfiesPredicate(sourceCode, member, predicate, environment, nonNull, resolvingAliases),
+		);
+	}
+	const literalKeyword = literalTypeKeyword(current);
+	if (literalKeyword !== null) return literalKeyword === unwrapParenthesizedType(predicate).type;
+	if (
+		current.type !== "TSTypeReference" ||
+		current.typeName.type !== "Identifier" ||
+		current.typeArguments
+	) {
+		return false;
+	}
+	const alias = visibleTypeAlias(current.typeName.name, current, environment.typeAliases);
+	if (alias === null || alias.typeParameters || resolvingAliases.has(alias)) return false;
+	resolvingAliases.add(alias);
+	return typeSatisfiesPredicate(
+		sourceCode,
+		alias.typeAnnotation,
+		predicate,
+		environment,
+		nonNull,
+		resolvingAliases,
+	);
+}
+
+function declaredTypeMatchesPredicate(
+	sourceCode: SourceCode,
+	type: ESTree.TSType,
+	predicate: ESTree.TSType | null,
+	environment: TypeEnvironment,
+	nonNull: boolean,
+): boolean {
+	return (
+		predicate !== null &&
+		hasInformativeType(type, environment) &&
+		typeSatisfiesPredicate(sourceCode, type, predicate, environment, nonNull)
+	);
+}
+
+function isOptionalParameterAnnotation(annotation: ESTree.TSTypeAnnotation): boolean {
+	// Oxlint types `Identifier.optional` as `false`, but an optional parameter (`value?: T`) sets it.
+	return annotation.parent.type === "Identifier" && Boolean(annotation.parent.optional);
+}
+
+/** Whether a guard call cannot narrow its argument: a known value, or a declared type the predicate already holds. */
+function isRedundantGuardArgument(
 	sourceCode: SourceCode,
 	expression: ESTree.Expression,
+	predicate: ESTree.TSType | null,
 	environment: TypeEnvironment,
+	nonNull = false,
 	visitedVariables = new Set<Variable>(),
 ): boolean {
-	if (expression.type === "ParenthesizedExpression" || expression.type === "TSNonNullExpression") {
-		return hasKnownCallArgumentEvidence(
+	if (expression.type === "ParenthesizedExpression" || expression.type === "TSSatisfiesExpression") {
+		return isRedundantGuardArgument(
 			sourceCode,
 			expression.expression,
+			predicate,
 			environment,
+			nonNull,
+			visitedVariables,
+		);
+	}
+	if (expression.type === "TSNonNullExpression") {
+		return isRedundantGuardArgument(
+			sourceCode,
+			expression.expression,
+			predicate,
+			environment,
+			true,
 			visitedVariables,
 		);
 	}
 	if (expression.type === "TSAsExpression" || expression.type === "TSTypeAssertion") {
-		if (isUnionType(expression.typeAnnotation, environment)) return false;
-		return hasInformativeType(expression.typeAnnotation, environment);
-	}
-	if (expression.type === "TSSatisfiesExpression") {
-		return hasKnownCallArgumentEvidence(
+		return declaredTypeMatchesPredicate(
 			sourceCode,
-			expression.expression,
+			expression.typeAnnotation,
+			predicate,
 			environment,
-			visitedVariables,
+			nonNull,
 		);
 	}
 	if (expression.type === "CallExpression") {
-		const owner = localFunctionForCall(sourceCode, expression.callee);
-		const returnType = owner?.returnType?.typeAnnotation;
-		if (returnType !== undefined && isUnionType(returnType, environment)) return false;
-		return returnType !== undefined && hasInformativeType(returnType, environment);
+		const returnType = localFunctionForCall(sourceCode, expression.callee)?.returnType?.typeAnnotation;
+		return (
+			returnType !== undefined &&
+			declaredTypeMatchesPredicate(sourceCode, returnType, predicate, environment, nonNull)
+		);
 	}
 	if (expression.type !== "Identifier") return isKnownEvidenceExpression(expression);
 	const variable = resolveVariable(sourceCode, expression);
 	if (variable === null || visitedVariables.has(variable)) return false;
 	const annotation = variableTypeAnnotation(sourceCode, variable);
 	if (annotation !== null) {
-		if (isUnionType(annotation.typeAnnotation, environment)) return false;
-		return hasInformativeType(annotation.typeAnnotation, environment);
+		return (
+			(nonNull || !isOptionalParameterAnnotation(annotation)) &&
+			declaredTypeMatchesPredicate(
+				sourceCode,
+				annotation.typeAnnotation,
+				predicate,
+				environment,
+				nonNull,
+			)
+		);
 	}
 	const declarator = variableDeclarator(variable);
 	if (
@@ -210,12 +294,23 @@ function hasKnownCallArgumentEvidence(
 		return false;
 	}
 	visitedVariables.add(variable);
-	return hasKnownCallArgumentEvidence(
+	return isRedundantGuardArgument(
 		sourceCode,
 		declarator.init,
+		predicate,
 		environment,
+		nonNull,
 		visitedVariables,
 	);
+}
+
+/** The predicate type of a non-generic guard; a generic guard's predicate names its own type parameters. */
+function guardPredicateType(owner: FunctionExpression): ESTree.TSType | null {
+	const predicate = owner.returnType?.typeAnnotation;
+	if (predicate?.type !== "TSTypePredicate" || (owner.typeParameters?.params.length ?? 0) > 0) {
+		return null;
+	}
+	return predicate.typeAnnotation?.typeAnnotation ?? null;
 }
 
 function typePredicateSubjectIndex(
@@ -389,9 +484,10 @@ export const noKnownValueWideningRule = defineRule({
 					return;
 				}
 				if (
-					!hasKnownCallArgumentEvidence(
+					!isRedundantGuardArgument(
 						context.sourceCode,
 						argument,
+						guardPredicateType(owner),
 						environment,
 					)
 				) {
