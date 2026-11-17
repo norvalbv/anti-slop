@@ -96,6 +96,7 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		`${selfComposed} function isPayload(value: unknown): value is A30<unknown> { return true; } function check(input: A30<unknown>) { return isPayload(input); }`,
 	],
 	invalid: [
+		{ code: `import { Record } from "effect"; ${prelude} const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
 		{ code: `${prelude} type Id<T> = T; const commands: Id<Id<Record<string, Command>>> = { start: startCommand };`, errors: [error] },
 		{ code: `${prelude} type Key<Key> = Key; const commands: Record<Key<Key<string>>, Command> = { start: startCommand };`, errors: [error] },
 		{ code: `${prelude} ${doublingKeys} const commands: Record<K30<"start"> | string, Command> = { start: startCommand };`, errors: [error] },

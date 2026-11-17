@@ -3,7 +3,7 @@ import type { ESTree } from "@oxlint/plugins";
 import {
 	createExpansionBudget,
 	createTypeAliasEnvironment,
-	hasVisibleTypeBinding,
+	hasVisibleTypeDeclaration,
 	isExpansionBudgetSpent,
 	spendExpansion,
 	visibleTypeAlias,
@@ -105,7 +105,7 @@ function isBuiltIn(
 ): boolean {
 	return (
 		BUILT_INS.has(name) &&
-		!hasVisibleTypeBinding(name, use, environment.typeAliases)
+		!hasVisibleTypeDeclaration(name, use, environment.typeAliases)
 	);
 }
 

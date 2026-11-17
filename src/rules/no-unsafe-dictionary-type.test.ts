@@ -26,7 +26,9 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"type Index<T> = Record<string, T>; type EntityIndex<T extends Entity> = Record<string, T>;",
 		"type Safe = Index<Command>; type Index<T> = Record<string, T>;",
 		"type A = Map<string, unknown>; type B = ReadonlyMap<string, unknown>; type C = WeakMap<object, unknown>;",
-		"import { Record } from './local'; type A = Record<string, unknown>;",
+		"import type { Record } from './local'; type A = Record<string, unknown>;",
+		"import { type Record } from './local'; type A = Record<string, unknown>;",
+		"interface Record<K, V> { key: K; value: V } type A = Record<string, unknown>;",
 		"type Record<K, V> = { key: K; value: V }; type A = Record<string, unknown>;",
 		"type Readonly<T> = { value: T }; type A = Record<string, Readonly<unknown>>;",
 		"type NonNullable<T> = { value: T }; type A = Record<string, NonNullable<unknown>>;",
@@ -63,6 +65,10 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		`type A0<T> = T | T; ${selfComposed(30)} type Values = Record<string, A30<Command>>;`,
 	],
 	invalid: [
+		// A value or namespace import named Record leaves the global Record type in place.
+		{ code: "import { Record } from 'effect'; type A = Record<string, unknown>;", errors: [error] },
+		{ code: "import * as Record from 'effect/Record'; type A = Record<string, unknown>;", errors: [error] },
+		{ code: "import Readonly from './readonly'; type A = Record<string, Readonly<unknown>>;", errors: [error] },
 		{
 			code: `type Two<T> = T | T; type Id<T> = T; type Values = Record<string, ${nested("Two", 30, "Command")} | Id<unknown>>;`,
 			errors: [error],
