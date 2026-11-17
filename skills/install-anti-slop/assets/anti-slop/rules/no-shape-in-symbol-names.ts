@@ -7,11 +7,22 @@ function containsForbiddenSymbolName(name: string): boolean {
   return name.toLowerCase().includes(FORBIDDEN_SYMBOL_NAME);
 }
 
-/** Return whether a qualified name is part of a dotted namespace declaration such as `namespace A.B {}`. */
-function isNamespaceDeclarationName(name: ESTree.Node): boolean {
+function outermostQualifiedName(name: ESTree.Node): ESTree.Node {
   let outermost = name;
   while (outermost.parent?.type === "TSQualifiedName") outermost = outermost.parent;
-  return outermost.parent?.type === "TSModuleDeclaration";
+  return outermost;
+}
+
+/** Return whether a qualified name is part of a dotted namespace declaration such as `namespace A.B {}`. */
+function isNamespaceDeclarationName(name: ESTree.Node): boolean {
+  return outermostQualifiedName(name).parent?.type === "TSModuleDeclaration";
+}
+
+/** Return whether a qualified name is the member path of an import type such as `import("m").A.B`. */
+function isImportTypeQualifierName(name: ESTree.Node): boolean {
+  const outermost = outermostQualifiedName(name);
+  const owner = outermost.parent;
+  return owner?.type === "TSImportType" && owner.qualifier === outermost;
 }
 
 /** Return whether an identifier names a statically accessed member owned by another value or namespace. */
@@ -19,7 +30,10 @@ function isBorrowedMemberName(node: ESTree.Node): boolean {
   const parent = node.parent;
   if (parent === null) return false;
   if (parent.type === "MemberExpression") return parent.property === node && parent.computed === false;
-  if (parent.type === "TSQualifiedName") return parent.right === node && !isNamespaceDeclarationName(parent);
+  if (parent.type === "TSQualifiedName") {
+    if (parent.right === node) return !isNamespaceDeclarationName(parent);
+    return isImportTypeQualifierName(parent);
+  }
   if (parent.type === "TSImportType") return parent.qualifier === node;
   return parent.type === "JSXMemberExpression" && parent.property === node;
 }
