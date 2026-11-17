@@ -70,10 +70,12 @@ function isInsideTypeAliasDeclaration(node: ESTree.Node): boolean {
 function isPlainAliasConsumerUse(node: ESTree.TSType, environment: TypeEnvironment): boolean {
 	if (node.type !== "TSTypeReference" || node.typeArguments?.params.length) return false;
 	const name = typeReferenceName(node);
+	const alias = name === null ? null : visibleTypeAlias(name, node, environment.typeAliases);
+	// Skip only when the alias declaration itself reports; an unsafe default reports at the use.
 	return (
-		name !== null &&
-		visibleTypeAlias(name, node, environment.typeAliases) !== null &&
-		!isInsideTypeAliasDeclaration(node)
+		alias !== null &&
+		!isInsideTypeAliasDeclaration(node) &&
+		classifyUnsafeDictionary(alias.typeAnnotation, environment) !== null
 	);
 }
 
