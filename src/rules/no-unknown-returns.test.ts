@@ -63,6 +63,8 @@ export default function (key: string): unknown { return registry.get(key); }`,
     "class A { [Symbol.iterator](): Iterator<number>; [Symbol.iterator](): unknown { return a; } }",
     "class A { [key](a: 'x'): number; [key](a: string): unknown { return a; } }",
     "class A { [keys.read](a: 'x'): number; [keys.read](a: string): unknown { return a; } }",
+    "type C<T> = T extends () => unknown ? 1 : 2;",
+    "type C<T> = T extends { load(): Promise<unknown> } ? 1 : 2;",
   ],
   invalid: [
     { code: "function load(): unknown { return input; }", errors: [error] },
@@ -151,6 +153,8 @@ export default function (key: string): unknown { return registry.get(key); }`,
     },
     { code: "class A { [key()](a: 'x'): number; [key()](a: string): unknown { return a; } }", errors: [error] },
     { code: "class A { [keys[i]](a: 'x'): number; [keys[i]](a: string): unknown { return a; } }", errors: [error] },
+    { code: "type C<T> = T extends string ? () => unknown : never;", errors: [error] },
+    { code: "type C<T> = T extends string ? never : () => unknown;", errors: [error] },
   ],
 });
 

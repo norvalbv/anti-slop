@@ -18,13 +18,14 @@ type FunctionWithReturnType =
   | ESTree.TSFunctionType
   | ESTree.TSMethodSignature;
 
-function isInsideTypeParameterBound(node: ESTree.Node): boolean {
+function isInsideTypeConstraint(node: ESTree.Node): boolean {
   let child: ESTree.Node = node;
   let parent: ESTree.Node | null = child.parent;
   while (parent !== null && parent.type !== "Program") {
     if (
-      parent.type === "TSTypeParameter" &&
-      (parent.constraint === child || parent.default === child)
+      (parent.type === "TSTypeParameter" &&
+        (parent.constraint === child || parent.default === child)) ||
+      (parent.type === "TSConditionalType" && parent.extendsType === child)
     ) {
       return true;
     }
@@ -175,7 +176,7 @@ export const noUnknownReturnsRule = defineRule({
       const annotation = node.returnType;
       if (annotation === null || annotation === undefined) return;
       if (!resolvesToUnknown(annotation.typeAnnotation)) return;
-      if (isInsideTypeParameterBound(node)) return;
+      if (isInsideTypeConstraint(node)) return;
       if (
         (node.type === "FunctionDeclaration" ||
           node.type === "FunctionExpression") &&
