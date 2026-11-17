@@ -17,6 +17,106 @@ type FunctionWithReturnType =
   | ESTree.TSFunctionType
   | ESTree.TSMethodSignature;
 
+function isInsideTypeParameterBound(node: ESTree.Node): boolean {
+  let child: ESTree.Node = node;
+  let parent: ESTree.Node | null = child.parent;
+  while (parent !== null && parent.type !== "Program") {
+    if (
+      parent.type === "TSTypeParameter" &&
+      (parent.constraint === child || parent.default === child)
+    ) {
+      return true;
+    }
+    child = parent;
+    parent = child.parent;
+  }
+  return false;
+}
+
+const unwrapExport = (node: ESTree.Node): ESTree.Node | null => {
+  if (node.type === "ExportNamedDeclaration") return node.declaration;
+  if (node.type === "ExportDefaultDeclaration") return node.declaration;
+  return node;
+};
+
+const statementBody = (node: ESTree.Node): Array<ESTree.Node> | null => {
+  if (
+    node.type === "Program" ||
+    node.type === "BlockStatement" ||
+    node.type === "StaticBlock" ||
+    node.type === "TSModuleBlock"
+  ) {
+    return node.body;
+  }
+  return null;
+};
+
+const hasPreviousFunctionOverload = (node: ESTree.Function): boolean => {
+  if (node.type !== "FunctionDeclaration") return false;
+
+  const declaration =
+    node.parent.type === "ExportNamedDeclaration" ||
+    node.parent.type === "ExportDefaultDeclaration"
+      ? node.parent
+      : node;
+  const siblings = statementBody(declaration.parent);
+  if (siblings === null) return false;
+
+  const index = siblings.findIndex((sibling) => sibling === declaration);
+  if (index <= 0) return false;
+
+  const previous = unwrapExport(siblings[index - 1]);
+  return (
+    previous?.type === "TSDeclareFunction" &&
+    previous.id?.name === node.id?.name
+  );
+};
+
+const staticMethodKey = (method: ESTree.MethodDefinition): string | null => {
+  if (!method.computed && method.key.type === "Identifier") {
+    return method.key.name;
+  }
+  if (!method.computed && method.key.type === "PrivateIdentifier") {
+    return `#${method.key.name}`;
+  }
+  if (
+    method.key.type === "Literal" &&
+    (typeof method.key.value === "string" || typeof method.key.value === "number")
+  ) {
+    return String(method.key.value);
+  }
+  return null;
+};
+
+const hasPreviousMethodOverload = (node: ESTree.Function): boolean => {
+  const method = node.parent;
+  if (method.type !== "MethodDefinition") return false;
+
+  const classBody = method.parent;
+  if (classBody.type !== "ClassBody") return false;
+
+  const key = staticMethodKey(method);
+  if (key === null) return false;
+
+  const index = classBody.body.findIndex((element) => element === method);
+  if (index <= 0) return false;
+
+  const previous = classBody.body[index - 1];
+  if (
+    previous.type !== "MethodDefinition" ||
+    previous.kind !== method.kind ||
+    previous.static !== method.static ||
+    staticMethodKey(previous) !== key
+  ) {
+    return false;
+  }
+
+  return previous.value.body === null;
+};
+
+const hasPreviousOverload = (node: ESTree.Function): boolean =>
+  hasPreviousFunctionOverload(node) || hasPreviousMethodOverload(node);
+
 /** Ban function contracts that return unknown instead of a parsed domain type. */
 export const noUnknownReturnsRule = defineRule({
   meta: {
@@ -57,6 +157,14 @@ export const noUnknownReturnsRule = defineRule({
       const annotation = node.returnType;
       if (annotation === null || annotation === undefined) return;
       if (!resolvesToUnknown(annotation.typeAnnotation)) return;
+      if (isInsideTypeParameterBound(node)) return;
+      if (
+        (node.type === "FunctionDeclaration" ||
+          node.type === "FunctionExpression") &&
+        hasPreviousOverload(node)
+      ) {
+        return;
+      }
       context.report({ node: annotation.typeAnnotation, messageId: "unknownReturn" });
     };
 
