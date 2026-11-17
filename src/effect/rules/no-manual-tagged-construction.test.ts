@@ -31,6 +31,7 @@ new RuleTester({
 			'Match.when({ reason: [{ nested: { _tag: "Deep" } }] }, handle);',
 			'Match.whenOr({ _tag: "A" }, { _tag: "B" }, { _tag: "C" }, () => true);',
 			"Ready.make({ value });",
+			"State.cases.Ready.make({ value });",
 			"new NotFound({ id });",
 			"({ _tag: tag, value });",
 		],
