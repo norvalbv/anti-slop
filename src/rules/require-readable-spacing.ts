@@ -10,14 +10,14 @@ function declaration(node: ESTree.Node): ESTree.Node {
   return node;
 }
 
+/** Bodiless signatures stay grouped, as in declaration files; an implementation joins only its own overloads (anonymous default exports included). */
 function isOverloadPair(previous: ESTree.Node, next: ESTree.Node): boolean {
   const prevDeclaration = declaration(previous);
   const nextDeclaration = declaration(next);
-  return prevDeclaration.type === "TSDeclareFunction"
-    && (nextDeclaration.type === "TSDeclareFunction" || nextDeclaration.type === "FunctionDeclaration")
-    && prevDeclaration.id != null
-    && nextDeclaration.id != null
-    && prevDeclaration.id.name === nextDeclaration.id.name;
+  return prevDeclaration.type === "TSDeclareFunction" && (
+    nextDeclaration.type === "TSDeclareFunction" ||
+    (nextDeclaration.type === "FunctionDeclaration" && prevDeclaration.id?.name === nextDeclaration.id?.name)
+  );
 }
 
 /** A `const`/`let`/`var`/`using` declaration, optionally exported, written on one line. */
