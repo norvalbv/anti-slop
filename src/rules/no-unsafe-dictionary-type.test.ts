@@ -58,6 +58,8 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"import { Record } from './my-types'; type X = Record<string, unknown>;",
 		"interface Record<K, V> { key: K; value: V } type A = Record<string, unknown>;",
 		"type Record<K, V> = { key: K; value: V }; type A = Record<string, unknown>;",
+		// A namespace never names a type, so the outer `Record` alias still shadows the built-in.
+		"type Record<K, V> = { key: K; value: V }; namespace N { namespace Record {} type A = Record<string, unknown>; }",
 		"type Readonly<T> = { value: T }; type A = Record<string, Readonly<unknown>>;",
 		"type NonNullable<T> = { value: T }; type A = Record<string, NonNullable<unknown>>;",
 		"type Value<T> = T; type Index<T = Command, U = Value<T>> = Record<string, U>; type A = Index;",

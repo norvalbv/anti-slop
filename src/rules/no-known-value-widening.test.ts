@@ -127,6 +127,9 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"type Box = { id: number }; function isBox(value: unknown): value is Array<Box> { return true; } function f<Box>(boxes: Array<Box>) { return isBox(boxes); }",
 		`${isStringGuard} declare const raw: unknown; isString(raw as const);`,
 		// Each `typeof sample` queries a different variable, so the equal text names different types.
+		// The inner `Models` namespace is a different declaration from the outer one.
+		"namespace Models { export type Item = string; } function isItem(value: unknown): value is Models.Item { return typeof value === 'string'; } namespace Inner { namespace Models { export type Item = number; } export function f(x: Models.Item) { return isItem(x); } }",
+		"namespace Models.Shapes { export type Item = string; } function isItem(value: unknown): value is Models.Shapes.Item { return typeof value === 'string'; } namespace Inner { namespace Models.Shapes { export type Item = number; } export function f(x: Models.Shapes.Item) { return isItem(x); } }",
 		"const sample = 'x'; function isSample(value: unknown): value is typeof sample { return value === sample; } function f() { const sample = 1; const x: typeof sample = sample; return isSample(x); }",
 		// A union DAG of aliases 40 deep: exponential without a per-alias memo.
 		unionDag("1"),
@@ -311,6 +314,8 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		{ code: "const a = { x: 1 } as Record<string, number>; const b: Record<string, number> = a;", errors: [error] },
 		{ code: "interface Item { readonly id: string } function isItem(value: unknown): value is Item { return true; } function f(item: Item) { return isItem(item); }", errors: [error] },
 		{ code: "import type * as ESTree from './ast'; function isIdentifier(value: unknown): value is ESTree.Identifier { return true; } function f(node: ESTree.Identifier) { return isIdentifier(node); }", errors: [error] },
+		{ code: "namespace Models { export type Item = string; } function isItem(value: unknown): value is Models.Item { return typeof value === 'string'; } namespace Inner { export function f(x: Models.Item) { return isItem(x); } }", errors: [error] },
+		{ code: "function isItem(value: unknown): value is Models.Item { return true; } function f(x: Models.Item) { return isItem(x); }", errors: [error] },
 		{ code: "type Box = { id: number }; function isBoxes(value: unknown): value is Array<Box> { return true; } function f(boxes: Array<Box>) { return isBoxes(boxes); }", errors: [error] },
 		{ code: "function outer() { type Id = string; function isId(value: unknown): value is Id { return true; } function f(id: Id) { return isId(id); } }", errors: [error] },
 		{ code: `${isStringGuard} isString('a' as const);`, errors: [error] },

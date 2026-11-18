@@ -10,7 +10,8 @@ type TypeBinding = {
 	/**
 	 * "type" for a declaration or `import type`; "maybe" for a named or default value import, whose
 	 * target may or may not be a type; "none" for a namespace import, which can never name a type, and
-	 * for a `declare global` interface, which merges with the global type instead of shadowing it.
+	 * for a `declare global` interface, which merges with the global type instead of shadowing it,
+	 * and for a namespace, which only roots qualified names.
 	 */
 	readonly typeMeaning: TypeMeaning;
 	readonly name: string;
@@ -114,6 +115,11 @@ function declaredTypeBinding(
 			? null
 			: { alias: null, typeMeaning: "type", name: node.id.name };
 	}
+	if (node.type === "TSModuleDeclaration" && node.kind === "namespace") {
+		let root: ESTree.Node = node.id;
+		while (root.type === "TSQualifiedName") root = root.left;
+		return root.type === "Identifier" ? { alias: null, typeMeaning: "none", name: root.name } : null;
+	}
 	if (node.type === "ImportNamespaceSpecifier") {
 		return { alias: null, typeMeaning: "none", name: node.local.name };
 	}
@@ -187,12 +193,10 @@ function ancestorDistance(ancestor: ESTree.Node, node: ESTree.Node): number | nu
 	return null;
 }
 
-function nearestTypeBindings(
-	name: string,
+function nearestBindings(
+	candidates: readonly TypeBinding[],
 	use: ESTree.Node,
-	environment: TypeAliasEnvironment,
 ): readonly TypeBinding[] {
-	const candidates = environment.bindingsByName.get(name) ?? [];
 	let nearestDistance = Number.POSITIVE_INFINITY;
 	let nearest: TypeBinding[] = [];
 	for (const candidate of candidates) {
@@ -206,6 +210,19 @@ function nearestTypeBindings(
 		nearest = [candidate];
 	}
 	return nearest;
+}
+
+/** The nearest bindings that may name a type; one that never does lets the name resolve further out. */
+function nearestTypeBindings(
+	name: string,
+	use: ESTree.Node,
+	environment: TypeAliasEnvironment,
+): readonly TypeBinding[] {
+	const candidates = environment.bindingsByName.get(name) ?? [];
+	return nearestBindings(
+		candidates.filter((binding) => binding.typeMeaning !== "none"),
+		use,
+	);
 }
 
 /** Resolve the nearest visible alias with this name, respecting lexical shadowing. */
@@ -230,9 +247,7 @@ export function hasVisibleTypeBinding(
 ): boolean {
 	return (
 		lexicalTypeParameterNames(use, environment.visitorKeys).has(name) ||
-		nearestTypeBindings(name, use, environment).some(
-			(binding) => binding.typeMeaning !== "none",
-		)
+		nearestTypeBindings(name, use, environment).length > 0
 	);
 }
 
@@ -267,8 +282,10 @@ function hasSameTypeBinding(
 	) {
 		return false;
 	}
-	const firstBindings = nearestTypeBindings(name, first, environment);
-	const secondBindings = nearestTypeBindings(name, second, environment);
+	// Namespaces count here: they root qualified names such as `Models.Item`.
+	const candidates = environment.bindingsByName.get(name) ?? [];
+	const firstBindings = nearestBindings(candidates, first);
+	const secondBindings = nearestBindings(candidates, second);
 	return (
 		firstBindings.length === secondBindings.length &&
 		firstBindings.every((binding, index) => binding === secondBindings[index])
