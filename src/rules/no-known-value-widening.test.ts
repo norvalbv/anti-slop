@@ -22,6 +22,8 @@ const doublingPlainKeys = `type P0 = "start"; ${aliasChain(30, (k) => `type P${k
 // `L30<string>` holds `string` only after 2^30 literal members, past any expansion budget.
 const lateBroadKeys = `type L0<T> = T; ${aliasChain(30, (k) => `type L${k}<T> = L${k - 1}<"x"> | L${k - 1}<T>;`)}`;
 const selfComposed = `type A0<T> = T | T; ${aliasChain(30, (k) => `type A${k}<T> = A${k - 1}<A${k - 1}<T>>;`)}`;
+const unionDag = (leaf: string): string =>
+	`${isStringGuard} type T0 = ${leaf}; ${aliasChain(40, (k) => `type T${k} = T${k - 1} | T${k - 1};`)} function f(input: T40) { return isString(input); }`;
 const twoLevels = (depth: number, inner: string): string =>
 	Array.from({ length: depth }).reduce<string>((type) => `Two<${type}>`, inner);
 
@@ -104,9 +106,9 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"const a = {} as Record<string, unknown>; const b: Record<string, unknown> = a;",
 		"const a = <Record<string, number>>{}; function f(): Record<string, number> { return a; }",
 		"const a = ({} as Record<string, number>)!; const b: Record<string, number> = a;",
-		// Sized to take minutes if every call rescans all references to its callee.
-		`function helper(value: number): number { return value; } ${"helper(0);".repeat(30000)}`,
-		`function isString(value: unknown): value is string { return typeof value === "string"; } declare const input: unknown; ${"isString(input);".repeat(30000)}`,
+		// Sized to take minutes if every call rescans all references to its callee and its argument.
+		`function helper(value: unknown): unknown { return value; } ${"helper(helper);".repeat(70000)}`,
+		`function isString(value: unknown): value is string { return typeof value === "string"; } const input = load(); ${"isString(input);".repeat(70000)}`,
 		"interface Item { readonly id: string } function isItem(value: unknown): value is Item { return true; } function pick<Item>(candidate: Item) { return isItem(candidate); }",
 		"interface Item { readonly id: string } function isItem(value: unknown): value is Item { return true; } function local(candidate: unknown) { interface Item { readonly name: string } const typed: Item = candidate as Item; return isItem(typed); }",
 		"interface Node { kind: string } function isNode(value: unknown): value is Node { return true; } function walk<Node>(n: Node) { return isNode(n); }",
@@ -115,10 +117,12 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"type Box = { id: number }; function isBox(value: unknown): value is Array<Box> { return true; } function f<Box>(boxes: Array<Box>) { return isBox(boxes); }",
 		`${isStringGuard} declare const raw: unknown; isString(raw as const);`,
 		// A union DAG of aliases 40 deep: exponential without a per-alias memo.
-		`${isStringGuard} type T0 = 1; ${Array.from({ length: 40 }, (_, i) => `type T${i + 1} = T${i} | T${i};`).join(" ")} function f(input: T40) { return isString(input); }`,
+		unionDag("1"),
 		`${isStringGuard} ${unionAliasChain(2000)} function f(input: A2000) { return isString(input); }`,
 	],
 	invalid: [
+		// Every leaf satisfies the guard, so the whole DAG is walked: exponential without a per-alias memo.
+		{ code: unionDag('"a"'), errors: [error] },
 		{ code: `import { Record } from "effect"; ${prelude} const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
 		{ code: `${prelude} type Id<T> = T; const commands: Id<Id<Record<string, Command>>> = { start: startCommand };`, errors: [error] },
 		{ code: `${prelude} type Key<Key> = Key; const commands: Record<Key<Key<string>>, Command> = { start: startCommand };`, errors: [error] },
