@@ -3,6 +3,7 @@ import type { ESTree, Variable } from "@oxlint/plugins";
 
 import {
   createTypeAliasEnvironment,
+  hasVisibleTypeBinding,
   hasVisibleTypeDeclaration,
   type TypeAliasEnvironment,
 } from "../shared/type-alias-resolution.ts";
@@ -37,12 +38,23 @@ function typeReferenceName(type: ESTree.TSTypeReference): string | null {
   return type.typeName.type === "Identifier" ? type.typeName.name : null;
 }
 
+/**
+ * How to read a name an ambiguous value import may shadow: "report" where reading it as the global
+ * type would report, so the import shadows; "spare" where reading it as the global spares the code.
+ */
+type GlobalReading = "report" | "spare";
+
 function isGlobalTypeReference(
   type: ESTree.TSTypeReference,
   name: string,
   environment: TypeAliasEnvironment,
+  reading: GlobalReading,
 ): boolean {
-  return typeReferenceName(type) === name && !hasVisibleTypeDeclaration(name, type, environment);
+  const shadowed =
+    reading === "report"
+      ? hasVisibleTypeBinding(name, type, environment)
+      : hasVisibleTypeDeclaration(name, type, environment);
+  return typeReferenceName(type) === name && !shadowed;
 }
 
 function isUnknownOrAnyType(type: ESTree.TSType): boolean {
@@ -50,7 +62,11 @@ function isUnknownOrAnyType(type: ESTree.TSType): boolean {
   return unwrapped.type === "TSUnknownKeyword" || unwrapped.type === "TSAnyKeyword";
 }
 
-function isBroadRecordKeyType(type: ESTree.TSType, environment: TypeAliasEnvironment): boolean {
+function isBroadRecordKeyType(
+  type: ESTree.TSType,
+  environment: TypeAliasEnvironment,
+  reading: GlobalReading,
+): boolean {
   const unwrapped = unwrapTypeParentheses(type);
   if (
     unwrapped.type === "TSStringKeyword" ||
@@ -60,30 +76,34 @@ function isBroadRecordKeyType(type: ESTree.TSType, environment: TypeAliasEnviron
     return true;
   }
   if (unwrapped.type === "TSUnionType") {
-    return unwrapped.types.every((member) => isBroadRecordKeyType(member, environment));
+    return unwrapped.types.every((member) => isBroadRecordKeyType(member, environment, reading));
   }
   return (
     unwrapped.type === "TSTypeReference" &&
-    isGlobalTypeReference(unwrapped, "PropertyKey", environment)
+    isGlobalTypeReference(unwrapped, "PropertyKey", environment, reading)
   );
 }
 
-function isBroadRecordType(type: ESTree.TSType, environment: TypeAliasEnvironment): boolean {
+function isBroadRecordType(
+  type: ESTree.TSType,
+  environment: TypeAliasEnvironment,
+  reading: GlobalReading,
+): boolean {
   const unwrapped = unwrapTypeParentheses(type);
 
   if (unwrapped.type === "TSTypeReference") {
-    if (isGlobalTypeReference(unwrapped, "Readonly", environment)) {
+    if (isGlobalTypeReference(unwrapped, "Readonly", environment, reading)) {
       const [inner] = unwrapped.typeArguments?.params ?? [];
-      return inner !== undefined && isBroadRecordType(inner, environment);
+      return inner !== undefined && isBroadRecordType(inner, environment, reading);
     }
 
-    if (!isGlobalTypeReference(unwrapped, "Record", environment)) return false;
+    if (!isGlobalTypeReference(unwrapped, "Record", environment, reading)) return false;
     const parameters = unwrapped.typeArguments?.params ?? [];
     return (
       parameters.length === 2 &&
       parameters[0] !== undefined &&
       parameters[1] !== undefined &&
-      isBroadRecordKeyType(parameters[0], environment) &&
+      isBroadRecordKeyType(parameters[0], environment, reading) &&
       isUnknownOrAnyType(parameters[1])
     );
   }
@@ -95,7 +115,7 @@ function isBroadRecordType(type: ESTree.TSType, environment: TypeAliasEnvironmen
     member?.type === "TSIndexSignature" &&
     member.parameters.length === 1 &&
     parameter !== undefined &&
-    isBroadRecordKeyType(parameter.typeAnnotation.typeAnnotation, environment) &&
+    isBroadRecordKeyType(parameter.typeAnnotation.typeAnnotation, environment, reading) &&
     isUnknownOrAnyType(member.typeAnnotation.typeAnnotation)
   );
 }
@@ -103,11 +123,12 @@ function isBroadRecordType(type: ESTree.TSType, environment: TypeAliasEnvironmen
 function broadTypeKind(
   type: ESTree.TSType,
   environment: TypeAliasEnvironment,
+  reading: GlobalReading,
 ): BroadTypeKind | null {
   const unwrapped = unwrapTypeParentheses(type);
   if (unwrapped.type === "TSUnknownKeyword" || unwrapped.type === "TSAnyKeyword") return "top";
   if (unwrapped.type === "TSObjectKeyword") return "object";
-  return isBroadRecordType(unwrapped, environment) ? "record" : null;
+  return isBroadRecordType(unwrapped, environment, reading) ? "record" : null;
 }
 
 function assertedExpression(
@@ -172,11 +193,11 @@ function isDefinitelyNarrowerRecordType(
   }
 
   if (unwrapped.type !== "TSTypeReference") return false;
-  if (isGlobalTypeReference(unwrapped, "Readonly", environment)) {
+  if (isGlobalTypeReference(unwrapped, "Readonly", environment, "report")) {
     const [inner] = unwrapped.typeArguments?.params ?? [];
     return inner !== undefined && isDefinitelyNarrowerRecordType(inner, environment);
   }
-  if (!isGlobalTypeReference(unwrapped, "Record", environment)) return false;
+  if (!isGlobalTypeReference(unwrapped, "Record", environment, "report")) return false;
 
   const parameters = unwrapped.typeArguments?.params ?? [];
   return (
@@ -232,7 +253,7 @@ function knownValueEvidence(
   const unwrapped = unwrapExpressionParentheses(expression);
 
   if (unwrapped.type === "TSAsExpression" || unwrapped.type === "TSTypeAssertion") {
-    if (broadTypeKind(unwrapped.typeAnnotation, environment) !== null) return null;
+    if (broadTypeKind(unwrapped.typeAnnotation, environment, "spare") !== null) return null;
     return { type: unwrapped.typeAnnotation };
   }
 
@@ -262,7 +283,7 @@ function knownValueEvidence(
   if (annotation !== undefined && annotatedIdentifier !== undefined) {
     if (
       functionBoundary(annotatedIdentifier) !== boundary ||
-      broadTypeKind(annotation, environment) !== null
+      broadTypeKind(annotation, environment, "spare") !== null
     ) {
       return null;
     }
@@ -318,9 +339,9 @@ function widenedBinding(
   const initializerBroadKind =
     initializerAssertion === null
       ? null
-      : broadTypeKind(initializerAssertion.typeAnnotation, environment);
+      : broadTypeKind(initializerAssertion.typeAnnotation, environment, "report");
   const declaredBroadKind =
-    declaredType === undefined ? null : broadTypeKind(declaredType, environment);
+    declaredType === undefined ? null : broadTypeKind(declaredType, environment, "report");
   const broadKind = declaredBroadKind ?? initializerBroadKind;
   if (broadKind === null) return null;
 
@@ -345,7 +366,7 @@ function assertionIsNarrower(
   assertedType: ESTree.TSType,
   environment: TypeAliasEnvironment,
 ): boolean {
-  if (broadTypeKind(assertedType, environment) !== null) return false;
+  if (broadTypeKind(assertedType, environment, "spare") !== null) return false;
   if (broadKind === "top") return true;
   if (typesHaveSameSyntax(sourceText, evidence.type, assertedType)) return true;
   if (broadKind === "object") return isDefinitelyObjectType(assertedType);

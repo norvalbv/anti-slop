@@ -32,6 +32,10 @@ const twoLevels = (depth: number, inner: string): string =>
 
 tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 	valid: [
+		// Whitespace inside a string literal type is its value, so " " and "" differ.
+		"function isSpace(value: unknown): value is \" \" { return value === \" \"; } const e: \"\" = \"\"; isSpace(e);",
+		// A named or default import may bring a type of that name, so it shadows the built-in.
+		`import { Record } from "effect"; ${prelude} const commands: Record<string, Command> = { start: startCommand };`,
 		// Undecided types never report, even where the fully expanded type would.
 		`${undecidedChain("Record<string, unknown>")} declare const x: { id: number }; const v: unknown = x as D1500;`,
 		`${undecidedChain("{ id: number }")} const a = { id: 1 } as D1500; export const b: Record<string, number> = a;`,
@@ -127,9 +131,9 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		`${isStringGuard} ${unionAliasChain(2000)} function f(input: A2000) { return isString(input); }`,
 	],
 	invalid: [
+		{ code: "function isSpace(value: unknown): value is \" \" { return value === \" \"; } const e: \" \" = \" \"; isSpace(e);", errors: [error] },
 		// Every leaf satisfies the guard, so the whole DAG is walked: exponential without a per-alias memo.
 		{ code: unionDag('"a"'), errors: [error] },
-		{ code: `import { Record } from "effect"; ${prelude} const commands: Record<string, Command> = { start: startCommand };`, errors: [error] },
 		{ code: `${prelude} type Id<T> = T; const commands: Id<Id<Record<string, Command>>> = { start: startCommand };`, errors: [error] },
 		{ code: `${prelude} type Key<Key> = Key; const commands: Record<Key<Key<string>>, Command> = { start: startCommand };`, errors: [error] },
 		{ code: `${prelude} ${doublingKeys} const commands: Record<K30<"start"> | string, Command> = { start: startCommand };`, errors: [error] },

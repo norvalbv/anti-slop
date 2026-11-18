@@ -17,7 +17,11 @@ tester.run("anti-slop/no-widen-then-assert", noWidenThenAssertRule, {
 		"function g() { type Record<K, V> = { id: number }; const value: Record<string, unknown> = { id: 1 }; return value as { id: number }; }",
 		"import type { Record } from './types'; const value: Record<string, unknown> = { id: 1 }; const result = value as { id: number };",
 		"import { type Record } from './types'; const value: Record<string, unknown> = { id: 1 }; const result = value as { id: number };",
-		// A value or namespace import named Record leaves the global Record type in place.
+		// A named or default import may bring a type of that name, so it shadows the built-in.
+		"import { Record } from 'effect'; const value: Record<string, unknown> = { id: 1 }; const result = value as { id: number };",
+		"import { Record } from 'effect'; const source = { id: 1 }; const value: Record<string, unknown> = source; const result = value as Record<string, number>;",
+		"import Record from './rec'; const source = { id: 1 }; const value: Record<string, unknown> = source; const result = value as Record<string, number>;",
+		// A namespace import named Record cannot be a type, so the global Record stays in place.
 		"import { Record } from 'effect'; declare function parse(): Record<string, unknown>; const source: Record<string, unknown> = parse(); const value: unknown = source; const result = value as { id: number };",
 		"import * as Record from './rec'; declare function parse(): Record<string, unknown>; const source: Record<string, unknown> = parse(); const value: unknown = source; const result = value as { id: number };",
 		"function h<PropertyKey extends 'id'>() { const value: Record<PropertyKey, unknown> = { id: 1 }; return value as { id: number }; }",
@@ -59,19 +63,7 @@ tester.run("anti-slop/no-widen-then-assert", noWidenThenAssertRule, {
 			errors: [error],
 		},
 		{
-			code: "import { Record } from 'effect'; const value: Record<string, unknown> = { id: 1 }; const result = value as { id: number };",
-			errors: [error],
-		},
-		{
 			code: "import * as Record from './rec'; const value: Record<string, unknown> = { id: 1 }; const result = value as { id: number };",
-			errors: [error],
-		},
-		{
-			code: "import { Record } from 'effect'; const source = { id: 1 }; const value: Record<string, unknown> = source; const result = value as Record<string, number>;",
-			errors: [error],
-		},
-		{
-			code: "import Record from './rec'; const source = { id: 1 }; const value: Record<string, unknown> = source; const result = value as Record<string, number>;",
 			errors: [error],
 		},
 		// A local Record is evidence, and asserting to it is a narrowing.

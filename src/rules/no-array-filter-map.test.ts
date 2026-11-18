@@ -39,6 +39,8 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     "type Array<T> = Set<T>; declare const users: Array<User>; users.filter(active).map(email);",
     "import type { Array } from './collections'; declare const users: Array<User>; users.filter(active).map(email);",
     "import { type Array } from './collections'; declare const users: Array<User>; users.filter(active).map(email);",
+		// A named or default import may bring a type of that name, so it shadows the built-in.
+		"import { Array } from 'effect'; function collect(users: Array<User>) { return users.filter(active).map(email); }",
     "function collect<Array>(users: Array) { return users.filter(active).map(email); }",
     "function collect(value, separator) { return value.split(separator).filter(Boolean).map(email); }",
     "function collect(value) { return value.split(1).filter(Boolean).map(email); }",
@@ -81,7 +83,6 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     { code: "function collect(users: readonly User[]) { return users.map(email).filter(present); }", errors: [error] },
     { code: "function collect(users: ReadonlyArray<User>) { return users.filter(active).map(email); }", errors: [error] },
     { code: "function collect(users: Array<User>) { return users.filter(active).map(email); }", errors: [error] },
-    { code: "import { Array } from 'effect'; function collect(users: Array<User>) { return users.filter(active).map(email); }", errors: [error] },
     { code: "import * as Array from './array'; function collect(users: Array<User>) { return users.filter(active).map(email); }", errors: [error] },
     { code: "const users = [] as const; users['filter'](active)['map'](email);", errors: [error] },
     { code: "const users = []; (users.filter(active)!).map(email);", errors: [error] },

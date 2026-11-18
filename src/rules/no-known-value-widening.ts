@@ -198,7 +198,10 @@ function unwrapParenthesizedType(type: ESTree.TSType): ESTree.TSType {
 }
 
 function typeText(sourceCode: SourceCode, type: ESTree.TSType): string {
-	return sourceCode.getText(unwrapParenthesizedType(type)).replace(/\s+/g, "");
+	// Drop whitespace between tokens but keep it inside string literal types, where it is the value.
+	return sourceCode
+		.getText(unwrapParenthesizedType(type))
+		.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|\s+/g, (_, literal?: string) => literal ?? "");
 }
 
 const literalTypeKeywords: Partial<Record<string, ESTree.TSType["type"]>> = {

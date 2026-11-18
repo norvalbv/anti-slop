@@ -8,13 +8,16 @@ type TypeScope = ESTree.Node;
 type TypeBinding = {
 	readonly alias: ESTree.TSTypeAliasDeclaration | null;
 	/**
-	 * False for a value or namespace import, whose type meaning syntax cannot show, and for a
-	 * `declare global` interface, which merges with the global type instead of shadowing it.
+	 * "type" for a declaration or `import type`; "maybe" for a named or default value import, whose
+	 * target may or may not be a type; "none" for a namespace import, which can never name a type, and
+	 * for a `declare global` interface, which merges with the global type instead of shadowing it.
 	 */
-	readonly declaresType: boolean;
+	readonly typeMeaning: TypeMeaning;
 	readonly name: string;
 	readonly scope: TypeScope;
 };
+
+type TypeMeaning = "type" | "maybe" | "none";
 
 type ResolvingAliases = ReadonlySet<ESTree.TSTypeAliasDeclaration>;
 
@@ -76,8 +79,7 @@ function isTypeOnlyImport(
 ): boolean {
 	return (
 		(node.type === "ImportSpecifier" && node.importKind === "type") ||
-		(node.parent.type === "ImportDeclaration" &&
-			node.parent.importKind === "type")
+		(node.parent.type === "ImportDeclaration" && node.parent.importKind === "type")
 	);
 }
 
@@ -94,10 +96,14 @@ function declaredTypeBinding(
 	node: ESTree.Node,
 ): Omit<TypeBinding, "scope"> | null {
 	if (node.type === "TSTypeAliasDeclaration") {
-		return { alias: node, declaresType: true, name: node.id.name };
+		return { alias: node, typeMeaning: "type", name: node.id.name };
 	}
 	if (node.type === "TSInterfaceDeclaration") {
-		return { alias: null, declaresType: !mergesWithGlobal(node), name: node.id.name };
+		return {
+			alias: null,
+			typeMeaning: mergesWithGlobal(node) ? "none" : "type",
+			name: node.id.name,
+		};
 	}
 	if (
 		node.type === "TSEnumDeclaration" ||
@@ -106,10 +112,10 @@ function declaredTypeBinding(
 	) {
 		return node.id === null
 			? null
-			: { alias: null, declaresType: true, name: node.id.name };
+			: { alias: null, typeMeaning: "type", name: node.id.name };
 	}
 	if (node.type === "ImportNamespaceSpecifier") {
-		return { alias: null, declaresType: false, name: node.local.name };
+		return { alias: null, typeMeaning: "none", name: node.local.name };
 	}
 	if (
 		node.type === "ImportSpecifier" ||
@@ -117,7 +123,7 @@ function declaredTypeBinding(
 	) {
 		return {
 			alias: null,
-			declaresType: isTypeOnlyImport(node),
+			typeMeaning: isTypeOnlyImport(node) ? "type" : "maybe",
 			name: node.local.name,
 		};
 	}
@@ -213,7 +219,27 @@ export function visibleTypeAlias(
 	return bindings.length === 1 ? (bindings[0]?.alias ?? null) : null;
 }
 
-/** Return whether a declaration that definitely names a type shadows a built-in here. */
+/**
+ * Return whether anything that may name a type shadows a built-in here. Use it where reading the
+ * name as the built-in would report: an ambiguous value import then stays silent.
+ */
+export function hasVisibleTypeBinding(
+	name: string,
+	use: ESTree.Node,
+	environment: TypeAliasEnvironment,
+): boolean {
+	return (
+		lexicalTypeParameterNames(use, environment.visitorKeys).has(name) ||
+		nearestTypeBindings(name, use, environment).some(
+			(binding) => binding.typeMeaning !== "none",
+		)
+	);
+}
+
+/**
+ * Return whether a declaration that definitely names a type shadows a built-in here. Use it where
+ * reading the name as the built-in spares the code: an ambiguous value import then stays silent.
+ */
 export function hasVisibleTypeDeclaration(
 	name: string,
 	use: ESTree.Node,
@@ -222,7 +248,7 @@ export function hasVisibleTypeDeclaration(
 	return (
 		lexicalTypeParameterNames(use, environment.visitorKeys).has(name) ||
 		nearestTypeBindings(name, use, environment).some(
-			(binding) => binding.declaresType,
+			(binding) => binding.typeMeaning === "type",
 		)
 	);
 }

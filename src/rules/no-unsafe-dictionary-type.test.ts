@@ -52,6 +52,10 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"type A = Map<string, unknown>; type B = ReadonlyMap<string, unknown>; type C = WeakMap<object, unknown>;",
 		"import type { Record } from './local'; type A = Record<string, unknown>;",
 		"import { type Record } from './local'; type A = Record<string, unknown>;",
+		// A named or default import may bring a type of that name, so it shadows the built-in.
+		"import { Record } from 'effect'; type A = Record<string, unknown>;",
+		"import Readonly from './readonly'; type A = Record<string, Readonly<unknown>>;",
+		"import { Record } from './my-types'; type X = Record<string, unknown>;",
 		"interface Record<K, V> { key: K; value: V } type A = Record<string, unknown>;",
 		"type Record<K, V> = { key: K; value: V }; type A = Record<string, unknown>;",
 		"type Readonly<T> = { value: T }; type A = Record<string, Readonly<unknown>>;",
@@ -94,9 +98,7 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 	],
 	invalid: [
 		// A value or namespace import named Record leaves the global Record type in place.
-		{ code: "import { Record } from 'effect'; type A = Record<string, unknown>;", errors: [error] },
 		{ code: "import * as Record from 'effect/Record'; type A = Record<string, unknown>;", errors: [error] },
-		{ code: "import Readonly from './readonly'; type A = Record<string, Readonly<unknown>>;", errors: [error] },
 		{
 			code: `type Two<T> = T | T; type Id<T> = T; type Values = Record<string, ${nested("Two", 30, "Command")} | Id<unknown>>;`,
 			errors: [error],
