@@ -41,6 +41,10 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 	valid: [
 		// An inner conditional's `infer` still shadows the module alias inside that conditional's true arm.
 		"type Item = unknown; type F<T> = T extends (T extends infer Item ? Record<string, Item> : never) ? 1 : 2;",
+		// An outer `infer` in a nested conditional's check, true or false type still belongs to the outer conditional.
+		"type Item = unknown; type F<T> = T extends ([infer Item] extends [string] ? 1 : 2) ? Record<string, Item> : never;",
+		"type Item = unknown; type F<T> = T extends (string extends T ? infer Item : 2) ? Record<string, Item> : never;",
+		"type Item = unknown; type F<T> = T extends (T extends string ? 1 : infer Item) ? Record<string, Item> : never;",
 		// The outer `infer` still shadows the alias when a sibling nested conditional declares its own.
 		"type Item = unknown; type F<T> = T extends [infer Item, T extends infer Other ? Other : never] ? Record<string, Item> : never;",
 		"type Commands = Record<string, Command>;",
