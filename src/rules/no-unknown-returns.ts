@@ -4,7 +4,7 @@ import type { ESTree } from "@oxlint/plugins";
 
 import {
   createTypeAliasEnvironment,
-  hasVisibleTypeBinding,
+  hasVisibleTypeDeclaration,
   resolvedTypeMatches,
   type TypeAliasEnvironment,
 } from "../shared/type-alias-resolution.ts";
@@ -18,13 +18,14 @@ type FunctionWithReturnType =
   | ESTree.TSFunctionType
   | ESTree.TSMethodSignature;
 
-function isInsideTypeParameterBound(node: ESTree.Node): boolean {
+function isInsideTypeConstraint(node: ESTree.Node): boolean {
   let child: ESTree.Node = node;
   let parent: ESTree.Node | null = child.parent;
   while (parent !== null && parent.type !== "Program") {
     if (
-      parent.type === "TSTypeParameter" &&
-      (parent.constraint === child || parent.default === child)
+      (parent.type === "TSTypeParameter" &&
+        (parent.constraint === child || parent.default === child)) ||
+      (parent.type === "TSConditionalType" && parent.extendsType === child)
     ) {
       return true;
     }
@@ -73,9 +74,23 @@ const hasPreviousFunctionOverload = (node: ESTree.Function): boolean => {
   );
 };
 
+/** Side-effect-free key path such as `key` or `Symbol.iterator`, which every overload evaluates alike. */
+const keyPath = (node: ESTree.Node): string | null => {
+  if (node.type === "Identifier") return node.name;
+  if (node.type !== "MemberExpression" || node.computed || node.property.type !== "Identifier") {
+    return null;
+  }
+  const object = keyPath(node.object);
+  return object === null ? null : `${object}.${node.property.name}`;
+};
+
 const staticMethodKey = (method: ESTree.MethodDefinition): string | null => {
   if (!method.computed && method.key.type === "Identifier") {
     return method.key.name;
+  }
+  if (method.computed) {
+    const path = keyPath(method.key);
+    if (path !== null) return `[${path}]`;
   }
   if (!method.computed && method.key.type === "PrivateIdentifier") {
     return `#${method.key.name}`;
@@ -148,7 +163,7 @@ export const noUnknownReturnsRule = defineRule({
           resolved.typeName.type !== "Identifier" ||
           (resolved.typeName.name !== "Promise" &&
             resolved.typeName.name !== "PromiseLike") ||
-          hasVisibleTypeBinding(resolved.typeName.name, resolved, typeAliases)
+          hasVisibleTypeDeclaration(resolved.typeName.name, resolved, typeAliases)
         ) {
           return false;
         }
@@ -161,7 +176,7 @@ export const noUnknownReturnsRule = defineRule({
       const annotation = node.returnType;
       if (annotation === null || annotation === undefined) return;
       if (!resolvesToUnknown(annotation.typeAnnotation)) return;
-      if (isInsideTypeParameterBound(node)) return;
+      if (isInsideTypeConstraint(node)) return;
       if (
         (node.type === "FunctionDeclaration" ||
           node.type === "FunctionExpression") &&
