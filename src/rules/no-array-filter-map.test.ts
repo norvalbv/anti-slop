@@ -8,11 +8,16 @@ const propertyChain = (length: number) =>
   ["const a0 = { w: [] };", ...Array.from({ length }, (_, i) => `const a${i + 1} = { w: a${i}.w };`), `a${length}.w.filter(x).map(y);`].join("\n");
 const aliasChain = (length: number) =>
   ["const a0 = [];", ...Array.from({ length }, (_, i) => `const a${i + 1} = a${i};`), `a${length}.filter(x).map(y);`].join("\n");
+const repeated = (count: number, line: (index: number) => string) => Array.from({ length: count }, (_, i) => line(i)).join("\n");
 
 tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
   valid: [
     propertyChain(2000),
     aliasChain(5000),
+    // Each of these hangs for minutes unless per-binding results and object keys are cached per file.
+    ["const a0 = { items: load() };", repeated(28, i => `const a${i + 1} = a${i};`), repeated(4000, () => "a28.items.filter(f).map(g);")].join("\n"),
+    [`const obj = { ${repeated(16000, i => `p${i}: ${i},`)} };`, repeated(16000, i => `obj.p${i}.filter(f).map(g);`)].join("\n"),
+    ["let xs = [];", repeated(32000, () => "xs.filter(f).map(g);"), "xs = [];"].join("\n"),
     "const users = []; users.values().filter(active).map(email).toArray();",
     "const users = []; users.values().map(email).filter(Boolean).toArray();",
     "Iterator.from(users).filter(active).map(email).toArray();",
@@ -32,9 +37,18 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     "function collect(Object) { return Object.keys(users).filter(active).map(email); }",
     "class Array {} Array.from(users).filter(active).map(email);",
     "type Array<T> = Set<T>; declare const users: Array<User>; users.filter(active).map(email);",
+    "import type { Array } from './collections'; declare const users: Array<User>; users.filter(active).map(email);",
+    "import { type Array } from './collections'; declare const users: Array<User>; users.filter(active).map(email);",
+    "function collect<Array>(users: Array) { return users.filter(active).map(email); }",
     "function collect(value, separator) { return value.split(separator).filter(Boolean).map(email); }",
     "function collect(value) { return value.split(1).filter(Boolean).map(email); }",
     "class Path extends Base { parts() { return super.split('/').filter(Boolean).map(email); } }",
+    "class Path extends Base { parts() { return this.split('/').filter(Boolean).map(email); } }",
+    "import _ from 'lodash'; _.chain(text).split(',').filter(Boolean).map(trim).value();",
+    "import _ from 'lodash'; _(text).split(',').filter(Boolean).map(trim).value();",
+    "import _ from 'lodash'; _.chain(text).trim().split(',').filter(Boolean).map(trim).value();",
+    "new Splitter().split(',').filter(Boolean).map(trim);",
+    "tag`a,b`.split(',').filter(Boolean).map(trim);",
     "Object.groupBy(users, team).filter(active).map(email);",
     "constructor.from(users).filter(active).map(email);",
     "toString.keys(users).filter(active).map(email);",
@@ -67,6 +81,8 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     { code: "function collect(users: readonly User[]) { return users.map(email).filter(present); }", errors: [error] },
     { code: "function collect(users: ReadonlyArray<User>) { return users.filter(active).map(email); }", errors: [error] },
     { code: "function collect(users: Array<User>) { return users.filter(active).map(email); }", errors: [error] },
+    { code: "import { Array } from 'effect'; function collect(users: Array<User>) { return users.filter(active).map(email); }", errors: [error] },
+    { code: "import * as Array from './array'; function collect(users: Array<User>) { return users.filter(active).map(email); }", errors: [error] },
     { code: "const users = [] as const; users['filter'](active)['map'](email);", errors: [error] },
     { code: "const users = []; (users.filter(active)!).map(email);", errors: [error] },
     { code: "const users = []; users?.filter(active)?.map(email);", errors: [error] },
@@ -74,6 +90,15 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     { code: "const users = []; users.filter(active).map(email).filter(Boolean);", errors: [error, error] },
     { code: "function collect(value) { return value.split(',').map(part => part.trim()).filter(Boolean); }", errors: [error] },
     { code: "function collect(value) { return value.split(/\\s+/).filter(Boolean).map(email); }", errors: [error] },
+    { code: "function collect(value) { return value?.trim().toLowerCase().split(',').filter(Boolean).map(email); }", errors: [error] },
+    { code: "function collect(row) { return row.cells.text.padStart(4).split(',').filter(Boolean).map(email); }", errors: [error] },
+    { code: "'a,b'.split(',').filter(Boolean).map(email);", errors: [error] },
+    { code: "`${a},${b}`.split(',').filter(Boolean).map(email);", errors: [error] },
+    { code: "const users = []; users.join(',').split(',').filter(Boolean).map(email);", errors: [error] },
+    { code: "import { readFileSync } from 'node:fs'; readFileSync(p, 'utf8').split('\\n').filter(Boolean).map(f);", errors: [error] },
+    { code: "import { readFileSync } from 'node:fs'; readFileSync(p, 'utf8').trim().split('\\n').filter(Boolean).map(f);", errors: [error] },
+    { code: "String(x).split(',').filter(Boolean).map(f);", errors: [error] },
+    { code: "import { execFileSync } from 'node:child_process'; execFileSync(c).toString().split('\\n').filter(Boolean).map(f);", errors: [error] },
     { code: "Array.from(users).filter(active).map(email);", errors: [error] },
     { code: "Array.of(first, second).map(email).filter(Boolean);", errors: [error] },
     { code: "Object.keys(users).filter(active).map(email);", errors: [error] },
