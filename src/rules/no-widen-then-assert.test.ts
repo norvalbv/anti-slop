@@ -29,6 +29,10 @@ tester.run("anti-slop/no-widen-then-assert", noWidenThenAssertRule, {
 		"const source = { id: 1 }; const value: Record<string, unknown> = source; { type Readonly<T> = unknown; const result = value as Readonly<Record<string, number>>; }",
 		// Equal type text names a different alias once a nested block shadows it.
 		"type Item = { id: string }; function f(input: Item) { const wide: object = input; { type Item = object; return wide as Item; } }",
+		// A nested block alias shadows the type parameter, so the assertion is object to object.
+		"function f<T extends { id: string }>(input: T) { const wide: object = input; { type T = object; return wide as T; } }",
+		// Two functions' type parameters share a name but not a declaration.
+		"function f<T extends object>(input: T) { const wide: object = input; return function g<T>() { return wide as T; }; }",
 	],
 	invalid: [
 		{
@@ -79,6 +83,23 @@ tester.run("anti-slop/no-widen-then-assert", noWidenThenAssertRule, {
 		},
 		{
 			code: "type Item = { id: string }; function f(input: Item) { const wide: object = input; { type Other = object; return wide as Item; } }",
+			errors: [error],
+		},
+		// Both references to T name the same type parameter of the enclosing function.
+		{
+			code: "function f<T extends { id: string }>(input: T): T { const wide: object = input; return wide as T; }",
+			errors: [error],
+		},
+		{
+			code: "function f<T extends Record<string, number>>(input: T): T { const wide: Record<string, unknown> = input; return wide as T; }",
+			errors: [error],
+		},
+		{
+			code: "function f<K extends string, V>(input: Map<K, V>): Map<K, V> { const wide: object = input; return wide as Map<K, V>; }",
+			errors: [error],
+		},
+		{
+			code: "function f<T extends object>(input: T) { const wide: object = input; { type Other = object; return wide as T; } }",
 			errors: [error],
 		},
 	],

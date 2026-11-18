@@ -1,6 +1,9 @@
 import type { ESTree } from "@oxlint/plugins";
 
-import { lexicalTypeParameterNames } from "./lexical-type-parameters.ts";
+import {
+	lexicalTypeParameterNames,
+	nearestTypeParameterBinder,
+} from "./lexical-type-parameters.ts";
 
 type VisitorKeys = Readonly<Record<string, readonly string[]>>;
 type TypeScope = ESTree.Node;
@@ -253,25 +256,39 @@ export function hasVisibleTypeDeclaration(
 	);
 }
 
+/** The type parameter or the alias bindings a name resolves to at a use, whichever is nearer. */
+function nearestTypeBinder(
+	name: string,
+	use: ESTree.Node,
+	environment: TypeAliasEnvironment,
+): ESTree.Node | readonly TypeBinding[] {
+	const bindings = nearestTypeBindings(name, use, environment);
+	const parameter = nearestTypeParameterBinder(name, use, environment.visitorKeys);
+	const bindingScope = bindings[0]?.scope;
+	if (
+		parameter !== null &&
+		(bindingScope === undefined ||
+			(ancestorDistance(bindingScope, use) ?? Number.POSITIVE_INFINITY) >= parameter.distance)
+	) {
+		return parameter.binder;
+	}
+	return bindings;
+}
+
 function hasSameTypeBinding(
 	first: ESTree.IdentifierReference,
 	second: ESTree.IdentifierReference,
 	environment: TypeAliasEnvironment,
 ): boolean {
-	const { name } = first;
-	const { visitorKeys } = environment;
-	if (
-		second.name !== name ||
-		lexicalTypeParameterNames(first, visitorKeys).has(name) ||
-		lexicalTypeParameterNames(second, visitorKeys).has(name)
-	) {
-		return false;
+	if (second.name !== first.name) return false;
+	const firstBinder = nearestTypeBinder(first.name, first, environment);
+	const secondBinder = nearestTypeBinder(first.name, second, environment);
+	if (!Array.isArray(firstBinder) || !Array.isArray(secondBinder)) {
+		return firstBinder === secondBinder;
 	}
-	const firstBindings = nearestTypeBindings(name, first, environment);
-	const secondBindings = nearestTypeBindings(name, second, environment);
 	return (
-		firstBindings.length === secondBindings.length &&
-		firstBindings.every((binding, index) => binding === secondBindings[index])
+		firstBinder.length === secondBinder.length &&
+		firstBinder.every((binding, index) => binding === secondBinder[index])
 	);
 }
 
@@ -296,7 +313,7 @@ function collectTypeReferenceRoots(
 	}
 }
 
-/** Whether two textually equal types name the same declarations; a shadowing type parameter or local type does not. */
+/** Whether two textually equal types name the same declarations, type parameters included. */
 export function hasSameTypeBindings(
 	first: ESTree.TSType,
 	second: ESTree.TSType,
