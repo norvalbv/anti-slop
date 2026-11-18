@@ -16,6 +16,8 @@ function collectInferTypeParameterNames(
 	visitorKeys: VisitorKeys,
 	names: Set<string>,
 ): void {
+	// A nested conditional scopes its own `infer` declarations to its true arm.
+	if (node.type === "TSConditionalType") return;
 	if (node.type === "TSInferType") names.add(node.typeParameter.name.name);
 	const record = node as unknown as Readonly<Record<string, unknown>>;
 	for (const key of visitorKeys[node.type] ?? []) {
