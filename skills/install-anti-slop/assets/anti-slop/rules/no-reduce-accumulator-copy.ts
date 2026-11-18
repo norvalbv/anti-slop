@@ -4,6 +4,7 @@ import type { ESTree, SourceCode, Variable } from "@oxlint/plugins";
 import {
   arrayMethodTarget,
   isKnownArrayExpression,
+  isTypeOnlyDefinition,
   resolveArrayBinding,
   unwrapArrayExpression,
 } from "../shared/array-method.ts";
@@ -62,19 +63,29 @@ const NON_ARRAY_EXPRESSIONS = new Set([
   "ObjectExpression", "ClassExpression", "FunctionExpression", "ArrowFunctionExpression", "Literal", "TemplateLiteral",
 ]);
 
+/** Top-level verdicts only: each scans every reference, and a reducer callback asks once per member call. */
+const nonArrayBindings = new WeakMap<Variable, boolean>();
+
 /** Object literals, classes, functions and primitives, directly or via unreassigned bindings; `new` stays unknown since Array subclasses exist. */
 function isKnownNonArrayReceiver(sourceCode: SourceCode, node: ESTree.Node, visited = new Set<Variable>()): boolean {
   node = unwrapArrayExpression(node);
   if (NON_ARRAY_EXPRESSIONS.has(node.type)) return true;
   const variable = resolveArrayBinding(sourceCode, node);
-  if (variable === null || visited.has(variable) || variable.defs.length === 0) return false;
+  if (variable === null || visited.has(variable)) return false;
+  const cached = nonArrayBindings.get(variable);
+  if (cached !== undefined) return cached;
+  const topLevel = visited.size === 0;
   visited.add(variable);
-  if (variable.references.some(reference => reference.isWrite() && !reference.init)) return false;
-  return variable.defs.every(definition => {
-    if (definition.type === "ClassName" || definition.type === "FunctionName") return true;
-    const init = constInitializer(definition);
-    return init !== null && isKnownNonArrayReceiver(sourceCode, init, visited);
-  });
+  const valueDefinitions = variable.defs.filter(definition => !isTypeOnlyDefinition(definition));
+  const verdict = valueDefinitions.length > 0 &&
+    !variable.references.some(reference => reference.isWrite() && !reference.init) &&
+    valueDefinitions.every(definition => {
+      if (definition.type === "ClassName" || definition.type === "FunctionName") return true;
+      const init = constInitializer(definition);
+      return init !== null && isKnownNonArrayReceiver(sourceCode, init, visited);
+    });
+  if (topLevel) nonArrayBindings.set(variable, verdict);
+  return verdict;
 }
 
 function isGlobalCopyOwner(sourceCode: SourceCode, node: ESTree.Node, name: string): boolean {

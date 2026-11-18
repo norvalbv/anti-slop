@@ -4,9 +4,11 @@ import { noReduceAccumulatorCopyRule } from "./no-reduce-accumulator-copy.ts";
 
 const tester = new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } });
 const error = { messageId: "accumulatorCopy" };
+const receiverCalls = (count: number) => `const items = [1]; items.reduce((acc, x) => (${"items.at(0),".repeat(count)}acc), 0);`;
 
 tester.run("anti-slop/no-reduce-accumulator-copy", noReduceAccumulatorCopyRule, {
   valid: [
+    receiverCalls(150_000),
     "const data = { initial: customCollection }; items.reduce((acc, item) => acc.concat(item), data.initial);",
     "const data = { initial: [] }; data.initial = customCollection; items.reduce((acc, item) => acc.concat(item), data.initial);",
     "function collect(data: { initial: IteratorObject<Item> }) { return items.reduce((acc, item) => acc.concat(item), data.initial); }",
@@ -37,6 +39,9 @@ tester.run("anti-slop/no-reduce-accumulator-copy", noReduceAccumulatorCopyRule, 
     "const once = { reduceRight(fn, initial) { return fn(initial); } }; once.reduceRight((acc, item) => acc.concat([item]), []);",
     "const base = { reduce(fn, initial) { return fn(initial); } }; const alias = base; alias.reduce((acc, item) => Object.assign({}, acc, item), {});",
     "const once = { reduce(fn, initial) { return fn(initial); } } as Reducer; (once as Reducer).reduce((acc, item) => Object.assign({}, acc, item), {});",
+    "export const Status = { reduce(fn: any, i: any) { return fn(i); } } as const; export type Status = typeof Status; Status.reduce((acc: any, x: any) => Object.assign({}, acc, x), {});",
+    "interface Box { n: number } class Box { static reduce(fn: any, i: any) { return fn(i); } } Box.reduce((acc: any) => Array.from(acc), []);",
+    "type T = number[]; const T = {}; T.reduce((acc, x) => acc.concat([x]), []);",
     {
       code: "const once = { reduce(fn, initial) { return fn(initial, { id: 1 }); } }; once.reduce((acc, item) => Object.assign({}, acc, item), {});",
       options: [{ requireArrayReceiver: true }],
@@ -55,6 +60,7 @@ tester.run("anti-slop/no-reduce-accumulator-copy", noReduceAccumulatorCopyRule, 
     },
   ],
   invalid: [
+    { code: "const items = [1]; items.reduce((acc, x) => (items.at(0), items.at(1), acc.concat([x])), []);", errors: [error] },
     { code: "const data = { initial: [] }; items.reduce((acc, item) => acc.concat(item), data.initial);", errors: [error] },
     { code: "function collect(data: { initial: readonly Item[] }) { return items.reduce((acc, item) => acc.slice(), data.initial); }", errors: [error] },
     { code: "items.reduce((acc, item) => Object.assign({}, acc, { [item.id]: item }), {});", errors: [error] },
@@ -85,6 +91,8 @@ tester.run("anti-slop/no-reduce-accumulator-copy", noReduceAccumulatorCopyRule, 
     { code: "const box = { items: [1, 2] }; box.items.reduce((acc, item) => Object.assign({}, acc, { [item]: item }), {});", errors: [error] },
     { code: "class Box { static items = [1, 2]; } Box.items.reduce((acc, item) => acc.concat([item]), []);", errors: [error] },
     { code: "class Once {} Once = items; Once.reduce((acc, item) => acc.concat([item]), []);", errors: [error] },
+    { code: "type Items = { n: number }; const Items = [1, 2]; Items.reduce((acc, item) => acc.concat([item]), []);", errors: [error] },
+    { code: "interface Items { n: number } Items.reduce((acc, item) => acc.concat([item]), []);", errors: [error] },
     {
       code: "[1, 2].reduce((acc, item) => Object.assign({}, acc, { [item]: item }), {});",
       options: [{ requireArrayReceiver: true }], errors: [error],
