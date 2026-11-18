@@ -24,7 +24,11 @@ const BUILT_INS = new Set([
 const TRANSPARENT_WRAPPERS = new Set(["Readonly", "Partial", "Required", "NonNullable"]);
 
 type TypeAliasEnvironment = ReadonlyMap<string, ResolvedType>;
-type ResolvingAliases = ReadonlySet<ESTree.TSTypeAliasDeclaration>;
+/** The aliases being expanded, innermost first; extending it shares the outer list. */
+type ResolvingAliases = {
+	readonly alias: ESTree.TSTypeAliasDeclaration;
+	readonly outer: ResolvingAliases;
+} | null;
 
 /** A type with the type-parameter bindings and alias expansions active where it was written. */
 type ResolvedType = {
@@ -59,13 +63,24 @@ export type TypeEnvironment = {
 
 type UnsafeValue = UnsafeDictionary["unsafeValue"];
 
+/** Per-file results for parameterless aliases, recorded only from walks that expanded every alias. */
+type AliasMemo = {
+	readonly dictionaryValues: Map<ESTree.TSTypeAliasDeclaration, readonly ResolvedType[]>;
+	readonly unsafeValues: Map<ESTree.TSTypeAliasDeclaration, UnsafeValue | null>;
+};
+
 /** One bounded classification: its shared expansion budget and each resumed binding's result. */
 type Walk = {
 	readonly budget: ExpansionBudget;
 	readonly environment: TypeEnvironment;
+	readonly aliases: AliasMemo;
 	readonly broadKeys: Map<ResolvedType, boolean>;
 	readonly unsafeValues: Map<ResolvedType, UnsafeValue | null>;
+	/** Aliases left unexpanded, by recursion or the spent budget; a result under one is partial. */
+	cutAliases: number;
 };
+
+const aliasMemos = new WeakMap<TypeEnvironment, AliasMemo>();
 
 function declaredStatement(statement: ESTree.Statement): ESTree.Node | null {
 	return statement.type === "ExportNamedDeclaration" ||
@@ -150,13 +165,33 @@ function isEffectivelyEmptyInterface(
 	);
 }
 
+function fileAliasMemo(environment: TypeEnvironment): AliasMemo {
+	const cached = aliasMemos.get(environment);
+	if (cached !== undefined) return cached;
+	const memo = { dictionaryValues: new Map(), unsafeValues: new Map() };
+	aliasMemos.set(environment, memo);
+	return memo;
+}
+
 function createWalk(environment: TypeEnvironment): Walk {
 	return {
 		budget: createExpansionBudget(),
 		environment,
+		aliases: fileAliasMemo(environment),
 		broadKeys: new Map(),
 		unsafeValues: new Map(),
+		cutAliases: 0,
 	};
+}
+
+function isResolving(
+	resolvingAliases: ResolvingAliases,
+	alias: ESTree.TSTypeAliasDeclaration,
+): boolean {
+	for (let current = resolvingAliases; current !== null; current = current.outer) {
+		if (current.alias === alias) return true;
+	}
+	return false;
 }
 
 /** A negative answer from a walk that left aliases unexpanded is undecided, not safe. */
@@ -219,18 +254,19 @@ function aliasSubstitution(
 	return next;
 }
 
-/** Expand a visible alias that is not already being expanded, binding its arguments. */
-function expandAlias(
+/** Expand an alias that is not already being expanded, binding its arguments. */
+function expandVisibleAlias(
 	walk: Walk,
+	alias: ESTree.TSTypeAliasDeclaration,
 	reference: ESTree.TSTypeReference,
-	name: string,
 	substitutions: TypeAliasEnvironment,
 	resolvingAliases: ResolvingAliases,
 ): ResolvedType | null {
-	const alias = visibleTypeAlias(name, reference, walk.environment.typeAliases);
-	if (alias === null || resolvingAliases.has(alias) || !spendExpansion(walk.budget)) return null;
-	const nextResolving = new Set(resolvingAliases);
-	nextResolving.add(alias);
+	if (isResolving(resolvingAliases, alias) || !spendExpansion(walk.budget)) {
+		walk.cutAliases += 1;
+		return null;
+	}
+	const nextResolving = { alias, outer: resolvingAliases };
 	const nextSubstitutions = aliasSubstitution(
 		alias,
 		reference,
@@ -241,6 +277,44 @@ function expandAlias(
 	return nextSubstitutions === null
 		? null
 		: { type: alias.typeAnnotation, substitutions: nextSubstitutions, resolvingAliases: nextResolving };
+}
+
+function expandAlias(
+	walk: Walk,
+	reference: ESTree.TSTypeReference,
+	name: string,
+	substitutions: TypeAliasEnvironment,
+	resolvingAliases: ResolvingAliases,
+): ResolvedType | null {
+	const alias = visibleTypeAlias(name, reference, walk.environment.typeAliases);
+	return alias === null
+		? null
+		: expandVisibleAlias(walk, alias, reference, substitutions, resolvingAliases);
+}
+
+/** A parameterless alias binds nothing, so its body classifies the same at every bare reference. */
+function sharedAlias(
+	alias: ESTree.TSTypeAliasDeclaration,
+	reference: ESTree.TSTypeReference,
+	resolvingAliases: ResolvingAliases,
+): ESTree.TSTypeAliasDeclaration | null {
+	return alias.typeParameters?.params.length ||
+		reference.typeArguments?.params.length ||
+		isResolving(resolvingAliases, alias)
+		? null
+		: alias;
+}
+
+/** Keep a shared alias's result for the file only when its walk left no alias unexpanded. */
+function remember<T>(
+	walk: Walk,
+	memo: Map<ESTree.TSTypeAliasDeclaration, T>,
+	alias: ESTree.TSTypeAliasDeclaration | null,
+	cutAliases: number,
+	result: T,
+): T {
+	if (alias !== null && walk.cutAliases === cutAliases) memo.set(alias, result);
+	return result;
 }
 
 function unsafeDirectValue(
@@ -295,10 +369,16 @@ function unsafeDirectValue(
 	if (interfaceDeclarations !== undefined) {
 		return isEffectivelyEmptyInterface(interfaceDeclarations) ? "empty-object" : null;
 	}
-	const expanded = expandAlias(walk, unwrapped, name, substitutions, resolvingAliases);
-	return expanded === null
-		? null
-		: unsafeDirectValue(walk, expanded.type, expanded.substitutions, expanded.resolvingAliases);
+	const alias = visibleTypeAlias(name, unwrapped, walk.environment.typeAliases);
+	if (alias === null) return null;
+	const shared = sharedAlias(alias, unwrapped, resolvingAliases);
+	const cached = shared === null ? undefined : walk.aliases.unsafeValues.get(shared);
+	if (cached !== undefined) return cached;
+	const cutAliases = walk.cutAliases;
+	const body = expandVisibleAlias(walk, alias, unwrapped, substitutions, resolvingAliases);
+	if (body === null) return null;
+	const result = unsafeDirectValue(walk, body.type, body.substitutions, body.resolvingAliases);
+	return remember(walk, walk.aliases.unsafeValues, shared, cutAliases, result);
 }
 
 function dictionaryValueTypes(
@@ -359,14 +439,20 @@ function dictionaryValueTypes(
 			: dictionaryValueTypes(walk, source, substitutions, resolvingAliases);
 	}
 
-	const expanded = expandAlias(walk, unwrapped, name, substitutions, resolvingAliases);
-	return expanded === null
-		? []
-		: dictionaryValueTypes(walk, expanded.type, expanded.substitutions, expanded.resolvingAliases);
+	const alias = visibleTypeAlias(name, unwrapped, walk.environment.typeAliases);
+	if (alias === null) return [];
+	const shared = sharedAlias(alias, unwrapped, resolvingAliases);
+	const cached = shared === null ? undefined : walk.aliases.dictionaryValues.get(shared);
+	if (cached !== undefined) return cached;
+	const cutAliases = walk.cutAliases;
+	const body = expandVisibleAlias(walk, alias, unwrapped, substitutions, resolvingAliases);
+	if (body === null) return [];
+	const result = dictionaryValueTypes(walk, body.type, body.substitutions, body.resolvingAliases);
+	return remember(walk, walk.aliases.dictionaryValues, shared, cutAliases, result);
 }
 
 function unsafeDictionary(walk: Walk, type: ESTree.TSType): UnsafeDictionary | null {
-	for (const value of dictionaryValueTypes(walk, type, new Map(), new Set())) {
+	for (const value of dictionaryValueTypes(walk, type, new Map(), null)) {
 		const unsafeValue = unsafeDirectValue(
 			walk,
 			value.type,
@@ -383,7 +469,7 @@ export function classifyUnsafeDictionaryValue(
 	environment: TypeEnvironment,
 ): UnsafeDictionary | Undecided | null {
 	const walk = createWalk(environment);
-	const unsafeValue = unsafeDirectValue(walk, valueType, new Map(), new Set());
+	const unsafeValue = unsafeDirectValue(walk, valueType, new Map(), null);
 	return decided(walk, unsafeValue === null ? null : { kind: "unsafe-dictionary", unsafeValue });
 }
 
@@ -415,11 +501,11 @@ function wideningTarget(walk: Walk, type: ESTree.TSType): WideningTarget | null 
 		return wrapped === undefined ? null : wideningTarget(walk, wrapped);
 	}
 	if (name === "Record" && isBuiltIn(name, unwrapped, walk.environment)) {
-		return hasBroadRecordKey(walk, unwrapped, new Map(), new Set())
+		return hasBroadRecordKey(walk, unwrapped, new Map(), null)
 			? { kind: "open dictionary" }
 			: null;
 	}
-	const expanded = expandAlias(walk, unwrapped, name, new Map(), new Set());
+	const expanded = expandAlias(walk, unwrapped, name, new Map(), null);
 	if (expanded === null) return null;
 	const resolved = classifyAliasBroadTarget(
 		walk,
