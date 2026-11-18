@@ -13,6 +13,13 @@ const nested = (wrapper: string, depth: number, inner: string): string =>
 const selfComposed = (depth: number): string =>
 	Array.from({ length: depth }, (_, k) => `type A${k + 1}<T> = A${k}<A${k}<T>>;`).join(" ");
 
+/** An alias whose value is a 2^13-member union, used bare `uses` times; each use once cost a full walk. */
+function manyBareUses(value: string, uses: number): string {
+	const chain = Array.from({ length: 13 }, (_, index) => `type A${index + 1} = A${index} | A${index};`);
+	const lets = Array.from({ length: uses }, (_, index) => `let use${index}: D;`);
+	return ["type A0 = { id: string };", ...chain, `type D = Record<string, ${value}>;`, ...lets].join("\n");
+}
+
 tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 	valid: [
 		"type Commands = Record<string, Command>;",
@@ -63,6 +70,8 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"type Handler<T = unknown> = (value: T) => void; let handler: Handler;",
 		`type Two<T> = T | T; type Values = Record<string, ${nested("Two", 30, "Command")}>;`,
 		`type A0<T> = T | T; ${selfComposed(30)} type Values = Record<string, A30<Command>>;`,
+		"type Box<T = Record<string, Command>> = T; let value: Box;",
+		manyBareUses("A13", 6000),
 	],
 	invalid: [
 		// A value or namespace import named Record leaves the global Record type in place.
@@ -181,5 +190,17 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		{ code: "type Dict<T = string> = Record<string, unknown>; let value: Dict;", errors: [error] },
 		{ code: "type Bad = (Record<string, unknown>);", errors: [error] },
 		{ code: "function f(input: (Record<string, any>)) {}", errors: [error] },
+		{
+			code: "type Props<P extends object = Record<string, unknown>> = Readonly<P>; function c(p: Props) {} function d(p: Props) {}",
+			errors: 1,
+		},
+		{ code: "type Box<T = Record<string, unknown>> = T; let a: Box; let b: Box;", errors: 1 },
+		{ code: "type Pickish<T = Record<string, unknown>> = Pick<T, keyof T>; let value: Pickish;", errors: 1 },
+		{ code: "type Box<U = unknown, T = Record<string, U>> = T; let value: Box;", errors: 1 },
+		{
+			code: "type D<T = unknown> = Record<string, T | Record<string, unknown>>; let value: D;",
+			errors: 2,
+		},
+		{ code: manyBareUses("A13 | unknown", 6000), errors: 1 },
 	],
 });
