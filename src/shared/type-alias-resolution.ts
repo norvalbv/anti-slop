@@ -213,18 +213,6 @@ export function visibleTypeAlias(
 	return bindings.length === 1 ? (bindings[0]?.alias ?? null) : null;
 }
 
-/** Return whether a local declaration shadows a built-in type at this use. */
-export function hasVisibleTypeBinding(
-	name: string,
-	use: ESTree.Node,
-	environment: TypeAliasEnvironment,
-): boolean {
-	return (
-		lexicalTypeParameterNames(use, environment.visitorKeys).has(name) ||
-		nearestTypeBindings(name, use, environment).length > 0
-	);
-}
-
 /** Return whether a declaration that definitely names a type shadows a built-in here. */
 export function hasVisibleTypeDeclaration(
 	name: string,
