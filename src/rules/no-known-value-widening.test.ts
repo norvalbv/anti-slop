@@ -126,6 +126,8 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"type Id = string; function isId(value: unknown): value is Id { return true; } declare function get(): string | number; function f() { type Id = string | number; const x: Id = get(); return isId(x); }",
 		"type Box = { id: number }; function isBox(value: unknown): value is Array<Box> { return true; } function f<Box>(boxes: Array<Box>) { return isBox(boxes); }",
 		`${isStringGuard} declare const raw: unknown; isString(raw as const);`,
+		// Each `typeof sample` queries a different variable, so the equal text names different types.
+		"const sample = 'x'; function isSample(value: unknown): value is typeof sample { return value === sample; } function f() { const sample = 1; const x: typeof sample = sample; return isSample(x); }",
 		// A union DAG of aliases 40 deep: exponential without a per-alias memo.
 		unionDag("1"),
 		`${isStringGuard} ${unionAliasChain(2000)} function f(input: A2000) { return isString(input); }`,

@@ -275,11 +275,13 @@ function hasSameTypeBinding(
 	);
 }
 
+/** Collect each type reference's root name; false when a `typeof` query names a value it cannot compare. */
 function collectTypeReferenceRoots(
 	node: ESTree.Node,
 	visitorKeys: VisitorKeys,
 	roots: ESTree.IdentifierReference[],
-): void {
+): boolean {
+	if (node.type === "TSTypeQuery") return false;
 	if (node.type === "TSTypeReference") {
 		let name = node.typeName;
 		while (name.type === "TSQualifiedName") name = name.left;
@@ -291,12 +293,13 @@ function collectTypeReferenceRoots(
 		const value = fields[key];
 		const children = Array.isArray(value) ? value : [value];
 		for (const child of children) {
-			if (isNode(child)) collectTypeReferenceRoots(child, visitorKeys, roots);
+			if (isNode(child) && !collectTypeReferenceRoots(child, visitorKeys, roots)) return false;
 		}
 	}
+	return true;
 }
 
-/** Whether two textually equal types name the same declarations; a shadowing type parameter or local type does not. */
+/** Whether two textually equal types name the same declarations; a shadowing type parameter, local type or `typeof` query does not. */
 export function hasSameTypeBindings(
 	first: ESTree.TSType,
 	second: ESTree.TSType,
@@ -304,9 +307,9 @@ export function hasSameTypeBindings(
 ): boolean {
 	const firstRoots: ESTree.IdentifierReference[] = [];
 	const secondRoots: ESTree.IdentifierReference[] = [];
-	collectTypeReferenceRoots(first, environment.visitorKeys, firstRoots);
-	collectTypeReferenceRoots(second, environment.visitorKeys, secondRoots);
 	return (
+		collectTypeReferenceRoots(first, environment.visitorKeys, firstRoots) &&
+		collectTypeReferenceRoots(second, environment.visitorKeys, secondRoots) &&
 		firstRoots.length === secondRoots.length &&
 		firstRoots.every((root, index) => {
 			const other = secondRoots[index];
