@@ -27,6 +27,8 @@ tester.run("anti-slop/no-widen-then-assert", noWidenThenAssertRule, {
 		"function h<PropertyKey extends 'id'>() { const value: Record<PropertyKey, unknown> = { id: 1 }; return value as { id: number }; }",
 		"const source = { id: 1 }; const value: Record<string, unknown> = source; { type Record<K, V> = unknown; const result = value as Record<string, number>; }",
 		"const source = { id: 1 }; const value: Record<string, unknown> = source; { type Readonly<T> = unknown; const result = value as Readonly<Record<string, number>>; }",
+		// Equal type text names a different alias once a nested block shadows it.
+		"type Item = { id: string }; function f(input: Item) { const wide: object = input; { type Item = object; return wide as Item; } }",
 	],
 	invalid: [
 		{
@@ -73,6 +75,10 @@ tester.run("anti-slop/no-widen-then-assert", noWidenThenAssertRule, {
 		},
 		{
 			code: "const value: unknown = { id: 1 }; { type Record<K, V> = { id: V }; const result = value as Record<string, unknown>; }",
+			errors: [error],
+		},
+		{
+			code: "type Item = { id: string }; function f(input: Item) { const wide: object = input; { type Other = object; return wide as Item; } }",
 			errors: [error],
 		},
 	],
