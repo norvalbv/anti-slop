@@ -39,6 +39,14 @@ function nestedDictionaries(value: string, depth: number, leaves: number): strin
 
 tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 	valid: [
+		// An inner conditional's `infer` still shadows the module alias inside that conditional's true arm.
+		"type Item = unknown; type F<T> = T extends (T extends infer Item ? Record<string, Item> : never) ? 1 : 2;",
+		// An outer `infer` in a nested conditional's check, true or false type still belongs to the outer conditional.
+		"type Item = unknown; type F<T> = T extends ([infer Item] extends [string] ? 1 : 2) ? Record<string, Item> : never;",
+		"type Item = unknown; type F<T> = T extends (string extends T ? infer Item : 2) ? Record<string, Item> : never;",
+		"type Item = unknown; type F<T> = T extends (T extends string ? 1 : infer Item) ? Record<string, Item> : never;",
+		// The outer `infer` still shadows the alias when a sibling nested conditional declares its own.
+		"type Item = unknown; type F<T> = T extends [infer Item, T extends infer Other ? Other : never] ? Record<string, Item> : never;",
 		"type Commands = Record<string, Command>;",
 		"type Metadata = Record<PropertyKey, JsonValue>;",
 		"type PermissionLevels = Record<Permission, number>;",
@@ -109,6 +117,11 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		{ code: "type M<T> = { [K in string]: T }; let value: M<unknown>;", errors: 1 },
 		{ code: "type M<T, U> = { [T in string]: U }; let value: M<string, unknown>;", errors: 1 },
 		{ code: "type M<T> = { [T in string]: T | unknown }; let value: M<string>;", errors: 2 },
+		// An `infer` inside a nested conditional is scoped to that conditional, so the outer arm reads the module alias.
+		{
+			code: "type Item = unknown; type F<T> = T extends (T extends infer Item ? Item : never) ? Record<string, Item> : never;",
+			errors: [error],
+		},
 		// A value or namespace import named Record leaves the global Record type in place.
 		{ code: "import * as Record from 'effect/Record'; type A = Record<string, unknown>;", errors: [error] },
 		{

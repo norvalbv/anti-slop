@@ -16,6 +16,13 @@ function collectInferTypeParameterNames(
 	visitorKeys: VisitorKeys,
 	names: Set<string>,
 ): void {
+	// Only a nested conditional's extendsType binds `infer` names to that inner conditional.
+	if (node.type === "TSConditionalType") {
+		for (const arm of [node.checkType, node.trueType, node.falseType]) {
+			collectInferTypeParameterNames(arm, visitorKeys, names);
+		}
+		return;
+	}
 	if (node.type === "TSInferType") names.add(node.typeParameter.name.name);
 	const record = node as unknown as Readonly<Record<string, unknown>>;
 	for (const key of visitorKeys[node.type] ?? []) {
