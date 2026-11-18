@@ -29,9 +29,18 @@ tester.run("anti-slop/no-unknown-returns", noUnknownReturnsRule, {
     "type Value = unknown; function outer() { type Value = User; function load(): Value { return user; } }",
     "type T = User; type Body = T; type Outer<T> = Body; function load(): Outer<unknown> { return user; }",
     "export function wrap<THook extends (...args: never[]) => unknown>(hook: THook): THook { return hook; }",
-    "export type Wrapped<THook extends () => unknown = () => unknown> = { hook: THook };",
+    "export type Wrapped<THook extends () => unknown> = { hook: THook };",
     "type FnConstraint<T extends () => unknown> = T;",
-    "type FnDefault<T = () => unknown> = T;",
+    // A function's type arguments are normally inferred, so its default rarely reaches a caller.
+    "function wrap<T = () => unknown>(hook: T): T { return hook; }",
+    "const wrap = <T = () => unknown>(hook: T): T => hook;",
+    "const wrap = function <T = () => unknown>(hook: T): T { return hook; };",
+    "declare function wrap<T = () => unknown>(hook: T): T;",
+    "class A { wrap<T = () => unknown>(hook: T): T { return hook; } }",
+    "interface A { wrap<T = () => unknown>(hook: T): T; }",
+    "interface A { <T = () => unknown>(hook: T): T; new <T = () => unknown>(hook: T): A; }",
+    "type Wrap = <T = () => unknown>(hook: T) => T;",
+    "type Make = new <T = () => unknown>(hook: T) => A;",
     "interface Wrapper<T extends (...args: any[]) => unknown> { handler: T; }",
     `export function read(key: "count"): number;
 export function read(key: "label"): string;
@@ -120,6 +129,12 @@ export default function (key: string): unknown { return registry.get(key); }`,
       code: "type MyFn = <T extends () => unknown>() => unknown;",
       errors: [error],
     },
+    // A type's own default is the contract a consumer receives when it omits the argument.
+    { code: "type Factory<F = () => unknown> = F;", errors: [error] },
+    { code: "export type Wrapped<THook extends () => unknown = () => unknown> = { hook: THook };", errors: [error] },
+    { code: "interface Holder<F = () => unknown> { make: F }", errors: [error] },
+    { code: "class Holder<F = () => Promise<unknown>> { make!: F }", errors: [error] },
+    { code: "function outer<F extends () => unknown>() { type Inner<G = () => unknown> = G; }", errors: [error] },
     {
       code: `export function read(key: "count"): unknown;
 export function read(key: string): unknown { return registry.get(key); }`,
