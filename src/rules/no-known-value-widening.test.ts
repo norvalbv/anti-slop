@@ -22,6 +22,8 @@ const doublingPlainKeys = `type P0 = "start"; ${aliasChain(30, (k) => `type P${k
 // `L30<string>` holds `string` only after 2^30 literal members, past any expansion budget.
 const lateBroadKeys = `type L0<T> = T; ${aliasChain(30, (k) => `type L${k}<T> = L${k - 1}<"x"> | L${k - 1}<T>;`)}`;
 const selfComposed = `type A0<T> = T | T; ${aliasChain(30, (k) => `type A${k}<T> = A${k - 1}<A${k - 1}<T>>;`)}`;
+const unionDag = (leaf: string): string =>
+	`${isStringGuard} type T0 = ${leaf}; ${aliasChain(40, (k) => `type T${k} = T${k - 1} | T${k - 1};`)} function f(input: T40) { return isString(input); }`;
 const twoLevels = (depth: number, inner: string): string =>
 	Array.from({ length: depth }).reduce<string>((type) => `Two<${type}>`, inner);
 
@@ -114,8 +116,9 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"type Id = string; function isId(value: unknown): value is Id { return true; } declare function get(): string | number; function f() { type Id = string | number; const x: Id = get(); return isId(x); }",
 		"type Box = { id: number }; function isBox(value: unknown): value is Array<Box> { return true; } function f<Box>(boxes: Array<Box>) { return isBox(boxes); }",
 		`${isStringGuard} declare const raw: unknown; isString(raw as const);`,
-		// A union DAG of aliases 40 deep: exponential without a per-alias memo.
-		`${isStringGuard} type T0 = 1; ${Array.from({ length: 40 }, (_, i) => `type T${i + 1} = T${i} | T${i};`).join(" ")} function f(input: T40) { return isString(input); }`,
+		// A union DAG of aliases 40 deep: exponential without a per-alias memo once every leaf satisfies the guard.
+		unionDag("1"),
+		unionDag('"a"'),
 		`${isStringGuard} ${unionAliasChain(2000)} function f(input: A2000) { return isString(input); }`,
 	],
 	invalid: [
