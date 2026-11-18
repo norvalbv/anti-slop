@@ -104,9 +104,9 @@ tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 		"const a = {} as Record<string, unknown>; const b: Record<string, unknown> = a;",
 		"const a = <Record<string, number>>{}; function f(): Record<string, number> { return a; }",
 		"const a = ({} as Record<string, number>)!; const b: Record<string, number> = a;",
-		// Sized to take minutes if every call rescans all references to its callee.
-		`function helper(value: number): number { return value; } ${"helper(0);".repeat(30000)}`,
-		`function isString(value: unknown): value is string { return typeof value === "string"; } declare const input: unknown; ${"isString(input);".repeat(30000)}`,
+		// Sized to take minutes if every call rescans all references to its callee and its argument.
+		`function helper(value: unknown): unknown { return value; } ${"helper(helper);".repeat(70000)}`,
+		`function isString(value: unknown): value is string { return typeof value === "string"; } const input = load(); ${"isString(input);".repeat(70000)}`,
 		"interface Item { readonly id: string } function isItem(value: unknown): value is Item { return true; } function pick<Item>(candidate: Item) { return isItem(candidate); }",
 		"interface Item { readonly id: string } function isItem(value: unknown): value is Item { return true; } function local(candidate: unknown) { interface Item { readonly name: string } const typed: Item = candidate as Item; return isItem(typed); }",
 		"interface Node { kind: string } function isNode(value: unknown): value is Node { return true; } function walk<Node>(n: Node) { return isNode(n); }",
