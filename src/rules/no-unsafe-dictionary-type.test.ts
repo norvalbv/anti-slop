@@ -68,6 +68,9 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		"interface Owner { readonly id: string } interface Child extends Owner { readonly __brand?: never } type A = Record<string, Child>;",
 		"interface Escape {} interface Escape { readonly id: string } type A = Record<string, Escape>;",
 		"interface Escape { readonly id: string } interface Escape {} type A = Record<string, Escape>;",
+		// A nearer alias or type parameter hides a top-level interface of the same name.
+		"interface Value {} function f() { type Value = { id: string }; let d: Record<string, Value>; }",
+		"interface Value {} function f<Value>(d: Record<string, Value>) {}",
 		"interface Owner { readonly id: string } type A = Record<string, object & Owner>;",
 		"type Wrap<T> = { readonly wrapped: T }; type Inner<T, U> = { readonly value: T } & Wrap<U>; type Outer<T, U> = Record<string, Inner<T, U>>; declare function f<T, U>(): Outer<T, U>;",
 		"type WithSchema<T extends Record<string, unknown>> = (schema: T) => void;",
@@ -128,6 +131,9 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		{ code: "type A = { [key: string]: NonNullable<unknown> };", errors: [error] },
 		{ code: "type A = Record<string, {}>;", errors: [error] },
 		{ code: "interface Escape {} type A = Record<string, Escape>;", errors: [error] },
+		{ code: "interface Value { readonly id: string } function f() { type Value = {}; let d: Record<string, Value>; }", errors: [error] },
+		{ code: "interface Escape {} function f() { let d: Record<string, Escape>; }", errors: [error] },
+		{ code: "interface Escape {} namespace Escape {} type A = Record<string, Escape>;", errors: [error] },
 		{
 			code: "interface Escape { readonly __brand?: never } type A = Record<string, Escape>;",
 			errors: [error],

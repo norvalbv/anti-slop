@@ -5,6 +5,7 @@ import {
 	createTypeAliasEnvironment,
 	hasVisibleTypeBinding,
 	isExpansionBudgetSpent,
+	isTopLevelTypeBinding,
 	spendExpansion,
 	visibleTypeAlias,
 	type ExpansionBudget,
@@ -366,7 +367,10 @@ function unsafeDirectValue(
 		);
 	}
 	const interfaceDeclarations = walk.environment.interfaces.get(name);
-	if (interfaceDeclarations !== undefined) {
+	if (
+		interfaceDeclarations !== undefined &&
+		isTopLevelTypeBinding(name, unwrapped, walk.environment.typeAliases)
+	) {
 		return isEffectivelyEmptyInterface(interfaceDeclarations) ? "empty-object" : null;
 	}
 	const alias = visibleTypeAlias(name, unwrapped, walk.environment.typeAliases);

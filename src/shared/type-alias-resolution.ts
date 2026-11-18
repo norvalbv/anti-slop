@@ -268,6 +268,18 @@ export function hasVisibleTypeDeclaration(
 	);
 }
 
+/** Whether a name here resolves to a top-level declaration, not a nearer type or type parameter. */
+export function isTopLevelTypeBinding(
+	name: string,
+	use: ESTree.Node,
+	environment: TypeAliasEnvironment,
+): boolean {
+	return (
+		!lexicalTypeParameterNames(use, environment.visitorKeys).has(name) &&
+		nearestTypeBindings(name, use, environment)[0]?.scope.type === "Program"
+	);
+}
+
 function hasSameTypeBinding(
 	first: ESTree.IdentifierReference,
 	second: ESTree.IdentifierReference,
