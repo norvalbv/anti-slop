@@ -28,6 +28,15 @@ function aliasChain(depth: number): string {
 	return ["type L0 = string;", ...links, ...uses].join("\n");
 }
 
+/** `depth` dictionaries nested through `value | {...}`, around `leaves` unknown dictionaries. */
+function nestedDictionaries(value: string, depth: number, leaves: number): string {
+	const members = Array.from({ length: leaves }, (_, index) => `p${index}: { [key: string]: unknown };`);
+	return Array.from({ length: depth }).reduce<string>(
+		(inner) => `{ [key: string]: ${value} | ${inner} }`,
+		`{ ${members.join(" ")} }`,
+	);
+}
+
 tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 	valid: [
 		"type Commands = Record<string, Command>;",
@@ -212,5 +221,10 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 			errors: 2,
 		},
 		{ code: manyBareUses("A13 | unknown", 6000), errors: 1 },
+		// Each type node once re-classified every enclosing type node, each spending the full budget.
+		{
+			code: `type A0<T> = T; ${selfComposed(30)} type Deep = ${nestedDictionaries("A30<string>", 100, 1500)};`,
+			errors: 1500,
+		},
 	],
 });

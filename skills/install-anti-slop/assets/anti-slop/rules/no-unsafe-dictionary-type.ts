@@ -68,9 +68,10 @@ function isInsideTypeAliasDeclaration(node: ESTree.Node): boolean {
 	return false;
 }
 
-/** Per-file memo of alias results, keyed by declaration so each body classifies once. */
+/** Per-file memo of type results: each node, and each alias by declaration, classifies once. */
 type FileState = {
 	readonly environment: TypeEnvironment;
+	readonly types: Map<ESTree.TSType, UnsafeDictionary | null>;
 	readonly bareUses: Map<ESTree.TSTypeAliasDeclaration, UnsafeDictionary | null>;
 	readonly declarationReports: Map<ESTree.TSTypeAliasDeclaration, boolean>;
 };
@@ -85,12 +86,21 @@ function bareAlias(
 }
 
 /** A bare alias use classifies exactly as its declaration with defaults applied. */
-function classifyType(node: ESTree.TSType, state: FileState): UnsafeDictionary | null {
+function classifyUncachedType(node: ESTree.TSType, state: FileState): UnsafeDictionary | null {
 	const alias = bareAlias(node, state.environment);
 	if (alias === null) return classifyUnsafeDictionary(node, state.environment);
 	if (!state.bareUses.has(alias))
 		state.bareUses.set(alias, classifyUnsafeDictionary(node, state.environment));
 	return state.bareUses.get(alias) ?? null;
+}
+
+/** Each type node is classified for itself and again for every type node nested inside it. */
+function classifyType(node: ESTree.TSType, state: FileState): UnsafeDictionary | null {
+	const cached = state.types.get(node);
+	if (cached !== undefined) return cached;
+	const result = classifyUncachedType(node, state);
+	state.types.set(node, result);
+	return result;
 }
 
 /** Whether the alias body or one of its type-parameter defaults is itself reported. */
@@ -167,6 +177,7 @@ export const noUnsafeDictionaryTypeRule = defineRule({
 			Program(node) {
 				state = {
 					environment: createTypeEnvironment(node, context.sourceCode.visitorKeys),
+					types: new Map(),
 					bareUses: new Map(),
 					declarationReports: new Map(),
 				};
