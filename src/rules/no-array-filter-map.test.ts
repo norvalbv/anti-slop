@@ -17,7 +17,7 @@ tester.run("anti-slop/no-array-filter-map", noArrayFilterMapRule, {
     // Each of these hangs for minutes unless per-binding results and object keys are cached per file.
     ["const a0 = { items: load() };", repeated(28, i => `const a${i + 1} = a${i};`), repeated(4000, () => "a28.items.filter(f).map(g);")].join("\n"),
     [`const obj = { ${repeated(16000, i => `p${i}: ${i},`)} };`, repeated(16000, i => `obj.p${i}.filter(f).map(g);`)].join("\n"),
-    ["let xs = [];", repeated(32000, () => "xs.filter(f).map(g);"), "xs = [];"].join("\n"),
+    ["let xs = [];", repeated(60000, () => "xs.filter(xs).map(xs);"), "xs = [];"].join("\n"),
     "const users = []; users.values().filter(active).map(email).toArray();",
     "const users = []; users.values().map(email).filter(Boolean).toArray();",
     "Iterator.from(users).filter(active).map(email).toArray();",
