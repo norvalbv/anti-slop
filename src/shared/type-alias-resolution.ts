@@ -225,6 +225,68 @@ export function hasVisibleTypeDeclaration(
 	);
 }
 
+function hasSameTypeBinding(
+	first: ESTree.IdentifierReference,
+	second: ESTree.IdentifierReference,
+	environment: TypeAliasEnvironment,
+): boolean {
+	const { name } = first;
+	const { visitorKeys } = environment;
+	if (
+		second.name !== name ||
+		lexicalTypeParameterNames(first, visitorKeys).has(name) ||
+		lexicalTypeParameterNames(second, visitorKeys).has(name)
+	) {
+		return false;
+	}
+	const firstBindings = nearestTypeBindings(name, first, environment);
+	const secondBindings = nearestTypeBindings(name, second, environment);
+	return (
+		firstBindings.length === secondBindings.length &&
+		firstBindings.every((binding, index) => binding === secondBindings[index])
+	);
+}
+
+function collectTypeReferenceRoots(
+	node: ESTree.Node,
+	visitorKeys: VisitorKeys,
+	roots: ESTree.IdentifierReference[],
+): void {
+	if (node.type === "TSTypeReference") {
+		let name = node.typeName;
+		while (name.type === "TSQualifiedName") name = name.left;
+		if (name.type === "Identifier") roots.push(name);
+	}
+	// SAFETY: Oxlint's visitor keys identify only ESTree child-node properties.
+	const fields = node as unknown as Readonly<Record<string, unknown>>;
+	for (const key of visitorKeys[node.type] ?? []) {
+		const value = fields[key];
+		const children = Array.isArray(value) ? value : [value];
+		for (const child of children) {
+			if (isNode(child)) collectTypeReferenceRoots(child, visitorKeys, roots);
+		}
+	}
+}
+
+/** Whether two textually equal types name the same declarations; a shadowing type parameter or local type does not. */
+export function hasSameTypeBindings(
+	first: ESTree.TSType,
+	second: ESTree.TSType,
+	environment: TypeAliasEnvironment,
+): boolean {
+	const firstRoots: ESTree.IdentifierReference[] = [];
+	const secondRoots: ESTree.IdentifierReference[] = [];
+	collectTypeReferenceRoots(first, environment.visitorKeys, firstRoots);
+	collectTypeReferenceRoots(second, environment.visitorKeys, secondRoots);
+	return (
+		firstRoots.length === secondRoots.length &&
+		firstRoots.every((root, index) => {
+			const other = secondRoots[index];
+			return other !== undefined && hasSameTypeBinding(root, other, environment);
+		})
+	);
+}
+
 function typeReferenceName(type: ESTree.TSTypeReference): string | null {
 	return type.typeName.type === "Identifier" ? type.typeName.name : null;
 }
