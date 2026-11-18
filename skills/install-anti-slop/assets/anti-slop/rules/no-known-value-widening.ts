@@ -62,7 +62,10 @@ function isStableConstVariable(variable: Variable, declarator: ESTree.VariableDe
 	);
 }
 
-/** Whether a binding's initializer asserts a broad type, as `{} as Record<string, T>` does. */
+/**
+ * Whether a binding's initializer asserts a broad type, as `{} as Record<string, T>` does. An
+ * undecided assertion counts too: it stops evidence at the source, so it can never cause a report.
+ */
 function hasBroadAssertionInitializer(
 	initializer: ESTree.Expression,
 	environment: TypeEnvironment,

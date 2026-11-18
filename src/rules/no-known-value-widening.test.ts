@@ -24,11 +24,17 @@ const lateBroadKeys = `type L0<T> = T; ${aliasChain(30, (k) => `type L${k}<T> = 
 const selfComposed = `type A0<T> = T | T; ${aliasChain(30, (k) => `type A${k}<T> = A${k - 1}<A${k - 1}<T>>;`)}`;
 const unionDag = (leaf: string): string =>
 	`${isStringGuard} type T0 = ${leaf}; ${aliasChain(40, (k) => `type T${k} = T${k - 1} | T${k - 1};`)} function f(input: T40) { return isString(input); }`;
+// A plain chain this deep exhausts the expansion budget, so every alias in it stays undecided.
+const undecidedChain = (base: string): string =>
+	`type D0 = ${base}; ${aliasChain(1500, (k) => `type D${k} = D${k - 1};`)}`;
 const twoLevels = (depth: number, inner: string): string =>
 	Array.from({ length: depth }).reduce<string>((type) => `Two<${type}>`, inner);
 
 tester.run("anti-slop/no-known-value-widening", noKnownValueWideningRule, {
 	valid: [
+		// Undecided types never report, even where the fully expanded type would.
+		`${undecidedChain("Record<string, unknown>")} declare const x: { id: number }; const v: unknown = x as D1500;`,
+		`${undecidedChain("{ id: number }")} const a = { id: 1 } as D1500; export const b: Record<string, number> = a;`,
 		`${prelude} type Key<T> = T; const commands: Record<Key<'start'>, Command> = { start: startCommand };`,
 		`${prelude} type Key<T = 'start'> = T; const commands: Record<Key, Command> = { start: startCommand };`,
 		`${prelude} const commands: Record<string, Command> = {};`,
