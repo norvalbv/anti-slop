@@ -385,6 +385,14 @@ function unsafeDirectValue(
 	return remember(walk, walk.aliases.unsafeValues, shared, cutAliases, result);
 }
 
+/** A mapped type's key binder shadows any outer binding of its name inside the value type. */
+function withoutBinding(substitutions: TypeAliasEnvironment, name: string): TypeAliasEnvironment {
+	if (!substitutions.has(name)) return substitutions;
+	const next = new Map(substitutions);
+	next.delete(name);
+	return next;
+}
+
 function dictionaryValueTypes(
 	walk: Walk,
 	type: ESTree.TSType,
@@ -404,7 +412,13 @@ function dictionaryValueTypes(
 	if (unwrapped.type === "TSMappedType") {
 		return unwrapped.typeAnnotation === null
 			? []
-			: [{ type: unwrapped.typeAnnotation, substitutions, resolvingAliases }];
+			: [
+					{
+						type: unwrapped.typeAnnotation,
+						substitutions: withoutBinding(substitutions, unwrapped.key.name),
+						resolvingAliases,
+					},
+				];
 	}
 
 	if (unwrapped.type !== "TSTypeReference") return [];

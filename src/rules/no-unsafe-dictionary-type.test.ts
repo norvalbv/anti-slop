@@ -100,8 +100,15 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		manyBareUses("A13", 6000),
 		// Each alias once re-walked the chain below it, up to the expansion budget.
 		aliasChain(6000),
+		// A mapped key binder shadows an alias parameter of the same name in the value type.
+		"type M<T> = { [T in string]: T }; let value: M<unknown>;",
+		"type M<T> = { [T in string]: Readonly<T> }; let value: Partial<M<unknown>>;",
+		"type Dict<T> = Record<string, T>; type M<T> = Dict<{ [T in string]: T }>; let value: M<unknown>;",
 	],
 	invalid: [
+		{ code: "type M<T> = { [K in string]: T }; let value: M<unknown>;", errors: 1 },
+		{ code: "type M<T, U> = { [T in string]: U }; let value: M<string, unknown>;", errors: 1 },
+		{ code: "type M<T> = { [T in string]: T | unknown }; let value: M<string>;", errors: 2 },
 		// A value or namespace import named Record leaves the global Record type in place.
 		{ code: "import * as Record from 'effect/Record'; type A = Record<string, unknown>;", errors: [error] },
 		{
