@@ -20,6 +20,14 @@ function manyBareUses(value: string, uses: number): string {
 	return ["type A0 = { id: string };", ...chain, `type D = Record<string, ${value}>;`, ...lets].join("\n");
 }
 
+/** A plain alias chain `L0 = string`, `L{i} = L{i-1}` that dictionaries use at its deepest alias. */
+function aliasChain(depth: number): string {
+	const links = Array.from({ length: depth - 1 }, (_, index) => `type L${index + 1} = L${index};`);
+	const last = `L${depth - 1}`;
+	const uses = [`const d: Record<string, ${last}> = {};`, `type D = { [key: string]: ${last} };`];
+	return ["type L0 = string;", ...links, ...uses].join("\n");
+}
+
 tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 	valid: [
 		"type Commands = Record<string, Command>;",
@@ -72,6 +80,8 @@ tester.run("anti-slop/no-unsafe-dictionary-type", noUnsafeDictionaryTypeRule, {
 		`type A0<T> = T | T; ${selfComposed(30)} type Values = Record<string, A30<Command>>;`,
 		"type Box<T = Record<string, Command>> = T; let value: Box;",
 		manyBareUses("A13", 6000),
+		// Each alias once re-walked the chain below it, up to the expansion budget.
+		aliasChain(6000),
 	],
 	invalid: [
 		// A value or namespace import named Record leaves the global Record type in place.
