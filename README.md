@@ -1,6 +1,6 @@
 # anti-slop
 
-[![skills.sh](https://skills.sh/b/dmmulroy/anti-slop)](https://skills.sh/dmmulroy/anti-slop)
+> **Maintained fork.** This is a maintained fork of [dmmulroy/anti-slop](https://github.com/dmmulroy/anti-slop). Upstream has merged nothing since 2026-10-14, so this fork merges its open pull requests (with their authors' commits), fixes its open issues, and keeps the upstream pull requests open so the two can converge again. Install from this repository to get those fixes.
 
 Opinionated Oxlint rules that reject low-evidence and low-signal TypeScript and JavaScript patterns.
 
@@ -11,7 +11,7 @@ Anti-slop is first and foremost the ruleset I use with my work, projects, and te
 ## Install with an agent skill
 
 ```bash
-npx skills add dmmulroy/anti-slop --skill install-anti-slop
+npx skills add norvalbv/anti-slop --skill install-anti-slop
 ```
 
 Then ask your coding agent to install or configure anti-slop in the current repository. The skill copies the plugin, installs compatible Oxlint dependencies—matching an existing Oxlint version when present—merges the plugin into the existing lint configuration, enables every generic rule, and validates the result. In repositories that depend directly on Effect, it also enables the opt-in Effect rule group.
@@ -25,7 +25,7 @@ For latest upstream, ask the agent to retrieve and identify that revision; an al
 To inspect available skills first:
 
 ```bash
-npx skills add dmmulroy/anti-slop --list
+npx skills add norvalbv/anti-slop --list
 ```
 
 ## Manual local installation
