@@ -16,6 +16,10 @@ tester.run("anti-slop/no-shape-in-symbol-names", noForbiddenTermInSymbolNamesRul
 		"import * as Lib from 'library'; const view = <Lib.Shape.View />;",
 		"declare const schema: ExternalSchema; type Fields = typeof schema.shape;",
 		"type Fields = import('zod').ZodRawShape;",
+		"type Config = import('konva').ShapeUtils.Config;",
+		"type Area = typeof import('three').ShapeUtils.area;",
+		"type Field = import('zod').Shapes.X;",
+		"type Field = import('zod').Shapes.Inner.X;",
 	],
 	invalid: [
 		{ code: "const shape = 1;", errors: [error] },
@@ -27,6 +31,8 @@ tester.run("anti-slop/no-shape-in-symbol-names", noForbiddenTermInSymbolNamesRul
 		{ code: "namespace Outer.Shapes { export const x = 1; }", errors: [error] },
 		{ code: "declare namespace Outer.Shapes { const x: 1; }", errors: [error] },
 		{ code: "namespace A.B.Shapes.C { export const x = 1; }", errors: [error] },
+		{ code: "namespace Shapes.Inner { export type X = 1; }", errors: [error] },
+		{ code: "type ShapeConfig = import('konva').Utils.Config;", errors: [error] },
 		{
 			code: "declare const owner: External; const shape = 'field'; const value = owner[shape];",
 			errors: 2,
